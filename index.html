@@ -1,0 +1,1608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Swimlane Studio &mdash; Horizontal Swimlane Diagrams</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --panel: #ffffff;
+    --ink: #1f2937;
+    --ink-soft: #4b5563;
+    --line: #e4e7ec;
+    --line-soft: #eef0f3;
+    --accent: #2563eb;
+    --accent-ink: #ffffff;
+    --lane-fill: #fafbfc;
+    --lane-stroke: #d6dae0;
+    --caption-fill: #1f2937;
+    --caption-ink: #f9fafb;
+    --note-fill: #fef3c7;
+    --note-stroke: #f59e0b;
+    --section-fill: #2563eb;
+    --section-ink: #ffffff;
+    --arrow: #374151;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    color: var(--ink);
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    gap: 16px;
+  }
+  header .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  header h1 {
+    font-size: 16px;
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  header .tag {
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+  header .actions { display: flex; gap: 8px; }
+  header button, header select {
+    font-family: var(--sans);
+    font-size: 13px;
+    padding: 6px 12px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  header button:hover, header select:hover {
+    background: #f3f4f6;
+    border-color: #c8ccd2;
+  }
+  header button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+  }
+  header button.primary:hover {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+  }
+
+  main {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: var(--editor-w, 38%) 6px minmax(0, 1fr);
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    background: var(--panel);
+  }
+
+  .resizer {
+    background: var(--line);
+    cursor: col-resize;
+    position: relative;
+    user-select: none;
+    touch-action: none;
+    transition: background 0.12s;
+  }
+  .resizer::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 32px;
+    background: #cbd0d6;
+    border-radius: 1px;
+  }
+  .resizer:hover, .resizer.dragging { background: #d6dae0; }
+  .resizer:hover::before, .resizer.dragging::before { background: var(--accent); }
+  body.resizing, body.resizing * { cursor: col-resize !important; user-select: none !important; }
+
+  .pane-header {
+    flex: 0 0 auto;
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--line-soft);
+    background: #fbfcfd;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  #editor {
+    flex: 1 1 auto;
+    width: 100%;
+    border: none;
+    outline: none;
+    resize: none;
+    padding: 16px 18px;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--ink);
+    background: var(--panel);
+    tab-size: 2;
+  }
+
+  #diagram-wrap {
+    flex: 1 1 auto;
+    overflow: auto;
+    background:
+      linear-gradient(var(--bg) 1px, transparent 1px) 0 0 / 20px 20px,
+      linear-gradient(90deg, var(--bg) 1px, transparent 1px) 0 0 / 20px 20px,
+      #ffffff;
+  }
+  #diagram {
+    padding: 24px;
+    min-width: 100%;
+    display: inline-block;
+  }
+  #diagram svg {
+    display: block;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+
+  .error {
+    margin: 16px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    white-space: pre-wrap;
+  }
+
+  footer {
+    flex: 0 0 auto;
+    padding: 8px 20px;
+    font-size: 12px;
+    color: var(--ink-soft);
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  footer code {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    background: #f3f4f6;
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  @media (max-width: 820px) {
+    main {
+      grid-template-columns: 1fr;
+      grid-template-rows: var(--editor-h, 1fr) 6px minmax(0, 1fr);
+    }
+    .resizer { cursor: row-resize; }
+    .resizer::before { width: 32px; height: 2px; }
+    body.resizing, body.resizing * { cursor: row-resize !important; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <h1>Swimlane Studio</h1>
+      <span class="tag">Horizontal swimlane diagrams &middot; swimlane syntax</span>
+    </div>
+    <div class="actions">
+      <select id="sample-picker" aria-label="Load example">
+        <option value="">Examples&hellip;</option>
+        <option value="order">Order processing</option>
+        <option value="auth">OAuth flow</option>
+        <option value="incident">Incident response</option>
+        <option value="minimal">Minimal</option>
+      </select>
+      <button id="copy-source">Copy source</button>
+      <button id="copy-svg">Copy SVG</button>
+      <button id="copy-png">Copy PNG</button>
+      <button id="download-svg">Download SVG</button>
+      <button id="download-png">Download PNG</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="pane">
+      <div class="pane-header">
+        <span>Source</span>
+        <span id="status"></span>
+      </div>
+      <textarea id="editor" spellcheck="false" autocomplete="off"></textarea>
+    </section>
+    <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" aria-label="Resize panes" tabindex="0"></div>
+    <section class="pane">
+      <div class="pane-header">
+        <span>Diagram</span>
+        <span id="size-info"></span>
+      </div>
+      <div id="diagram-wrap"><div id="diagram"></div></div>
+    </section>
+  </main>
+
+  <footer>
+    <span>
+      Syntax: <code>A -&gt; B: msg</code> <code>A --&gt; B: msg</code>
+      <code>note A: text</code> <code>note A, B: text</code>
+      <code>[ Section ]</code> <code>title:</code> <code>order:</code>
+    </span>
+    <span>Use <code>\n</code> in labels for line breaks &middot; <code>#</code> or <code>//</code> for comments</span>
+  </footer>
+
+<script>
+"use strict";
+
+// ---------- samples ----------
+const SAMPLES = {
+  order: `title: Order processing
+
+order: Customer, Storefront, API, Inventory, Payment
+
+Customer -> Storefront: Place order
+Storefront -> API: POST /orders
+API -> Inventory: Reserve stock
+Inventory --> API: reservation_id
+API -> Payment: Charge card
+Payment --> API: txn_id
+API --> Storefront: 201 Created
+Storefront --> Customer: Order confirmation
+
+[ Async fulfilment ]
+
+API -> Inventory: Commit reservation
+note API, Inventory: Eventual consistency\\nwindow ~2s
+API -> Customer: Email receipt
+`,
+
+  auth: `title: OAuth 2.0 authorization code flow
+
+order: User, App, Browser, AuthServer, Resource
+
+User -> App: Click "Sign in"
+App -> Browser: Redirect to /authorize
+Browser -> AuthServer: GET /authorize
+AuthServer --> Browser: Login page
+User -> Browser: Submit credentials
+Browser -> AuthServer: POST credentials
+AuthServer --> Browser: Redirect with code
+
+[ Token exchange ]
+
+Browser -> App: GET /callback?code=...
+App -> AuthServer: POST /token (code)
+AuthServer --> App: access_token, refresh_token
+note App: Persist tokens\\nin session store
+
+[ Resource access ]
+
+App -> Resource: GET /me (Bearer)
+Resource --> App: profile JSON
+App --> User: Welcome page
+`,
+
+  incident: `title: Incident response
+
+order: Alert, OnCall, Bridge, Engineer, Comms
+
+Alert -> OnCall: Pager fires
+OnCall -> Bridge: Open conference
+OnCall -> Engineer: Page primary
+Engineer -> Bridge: Join, take IC role
+
+[ Triage ]
+
+Engineer -> Engineer: Inspect dashboards
+note Engineer: Check error rates,\\nsaturation, recent deploys
+Engineer --> OnCall: Confirm severity
+
+[ Communication ]
+
+OnCall -> Comms: Post status page update
+Comms --> OnCall: Acknowledged
+
+[ Recovery ]
+
+Engineer -> Engineer: Apply rollback
+Engineer --> OnCall: Service restored
+OnCall -> Comms: Post resolution
+`,
+
+  minimal: `title: Hello
+
+Alice -> Bob: Hi
+Bob --> Alice: Hey
+`,
+};
+
+// ---------- parser ----------
+function parse(source) {
+  const lines = source.split(/\r?\n/);
+  const events = [];
+  const lanesSeen = new Set();
+  let title = "";
+  let explicitOrder = null;
+  const errors = [];
+
+  const arrowRe = /^(.+?)\s*(<-{1,2}>|<-{1,2}|-{1,2}>)\s*(.+?)(?::\s*(.*))?$/;
+  const noteRe = /^note\b(?:\s+([^:]+?))?\s*:\s*(.*)$/i;
+  const sectionRe = /^\[\s*(.+?)\s*\]$/;
+  const titleRe = /^title\s*:\s*(.*)$/i;
+  const orderRe = /^order\s*:\s*(.*)$/i;
+
+  for (let lineNo = 0; lineNo < lines.length; lineNo++) {
+    let raw = lines[lineNo];
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith("#") || line.startsWith("//")) continue;
+
+    let m;
+    if ((m = line.match(titleRe))) { title = m[1].trim(); continue; }
+    if ((m = line.match(orderRe))) {
+      explicitOrder = m[1].split(",").map(s => s.trim()).filter(Boolean);
+      explicitOrder.forEach(l => lanesSeen.add(l));
+      continue;
+    }
+    if ((m = line.match(sectionRe))) {
+      events.push({ type: "section", label: m[1] });
+      continue;
+    }
+    if ((m = line.match(noteRe))) {
+      const targets = m[1] ? m[1].split(",").map(s => s.trim()).filter(Boolean) : [];
+      targets.forEach(l => lanesSeen.add(l));
+      events.push({ type: "note", lanes: targets, text: unescapeLabel(m[2] || "") });
+      continue;
+    }
+    if ((m = line.match(arrowRe))) {
+      let from = m[1].trim();
+      const arrow = m[2];
+      let to = m[3].trim();
+      const raw = unescapeLabel((m[4] || "").trim());
+      const { caption: text, arrowLabel } = splitArrowLabel(raw);
+      // ->, --> : forward link. When from == to, the box is in the lane
+      //           and the arrow trails right to the next same-lane box.
+      // <->, <-->: bidirectional link. The box has BOTH a forward link
+      //           (to the next same-lane box) and a backward link (from
+      //           the previous same-lane box).
+      // <-, <-- : reversed (B sends to A).
+      // Trailing "<label>" in the text becomes the arrow's caption.
+      if (/^<-{1,2}>$/.test(arrow)) {
+        const dashed = arrow.includes("--");
+        lanesSeen.add(from);
+        lanesSeen.add(to);
+        events.push({ type: "message", from, to, text, dashed, bidirectional: true, arrowLabel });
+        continue;
+      }
+      const reversed = arrow.startsWith("<");
+      const dashed = arrow.includes("--");
+      if (reversed) [from, to] = [to, from];
+      lanesSeen.add(from);
+      lanesSeen.add(to);
+      events.push({ type: "message", from, to, text, dashed, arrowLabel });
+      continue;
+    }
+
+    // Backward-only box: "Lane <: text". A labelled box in the lane with
+    // only an incoming blue link from the previous same-lane box.
+    const incomingOnlyRe = /^([^<:]+?)\s*<:\s*(.+)$/;
+    if ((m = line.match(incomingOnlyRe))) {
+      const lane = m[1].trim();
+      const raw = unescapeLabel(m[2].trim());
+      const { caption: text, arrowLabel } = splitArrowLabel(raw);
+      if (lane && text) {
+        lanesSeen.add(lane);
+        events.push({ type: "message", from: lane, to: lane, text, incomingOnly: true, arrowLabel });
+        continue;
+      }
+    }
+
+    // Non-directed standalone box: "Lane: text". A labelled box in the
+    // lane with no arrows of its own.
+    const standaloneRe = /^([^:]+?):\s*(.+)$/;
+    if ((m = line.match(standaloneRe))) {
+      const lane = m[1].trim();
+      const text = unescapeLabel(m[2].trim());
+      if (lane && text) {
+        lanesSeen.add(lane);
+        events.push({ type: "message", from: lane, to: lane, text, standalone: true });
+        continue;
+      }
+    }
+
+    errors.push(`Line ${lineNo + 1}: could not parse "${line}"`);
+  }
+
+  let laneOrder;
+  if (explicitOrder && explicitOrder.length) {
+    laneOrder = explicitOrder.slice();
+    for (const l of lanesSeen) if (!laneOrder.includes(l)) laneOrder.push(l);
+  } else {
+    laneOrder = [];
+    for (const ev of events) {
+      if (ev.type === "message") {
+        if (!laneOrder.includes(ev.from)) laneOrder.push(ev.from);
+        if (!laneOrder.includes(ev.to)) laneOrder.push(ev.to);
+      } else if (ev.type === "note") {
+        for (const l of ev.lanes) if (!laneOrder.includes(l)) laneOrder.push(l);
+      }
+    }
+  }
+
+  // assign column indices to non-section events; group sections over following columns
+  const positioned = [];
+  const sections = [];
+  let currentSection = null;
+  for (const ev of events) {
+    if (ev.type === "section") {
+      if (currentSection) currentSection.end = positioned.length - 1;
+      currentSection = { label: ev.label, start: positioned.length, end: positioned.length };
+      sections.push(currentSection);
+    } else {
+      ev.col = positioned.length;
+      positioned.push(ev);
+    }
+  }
+  if (currentSection) currentSection.end = positioned.length - 1;
+  // discard trailing sections with no following events
+  for (let i = sections.length - 1; i >= 0; i--) {
+    if (sections[i].start > positioned.length - 1) sections.splice(i, 1);
+  }
+
+  return {
+    title,
+    lanes: laneOrder,
+    events: positioned,
+    sections,
+    errors,
+  };
+}
+
+function unescapeLabel(s) {
+  return s.replace(/\\n/g, "\n");
+}
+
+// Split a label like "Send request <urgent>" into the box caption and the
+// arrow-label text. Returns { caption, arrowLabel } where arrowLabel is
+// null if the input has no trailing <...> token.
+function splitArrowLabel(text) {
+  const m = String(text).match(/^(.*?)\s*<([^<>]+)>\s*$/);
+  if (m) return { caption: m[1].trim(), arrowLabel: m[2].trim() };
+  return { caption: text, arrowLabel: null };
+}
+
+function escXml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// ---------- layout solver ----------
+//
+// The solver assigns columns to events and precomputes arrow routings.
+// It enforces these rules deterministically:
+//
+//   1. Arrow segments are vertical or left-to-right only.
+//   2. Arrows never enter a box on the right or exit a box on the left.
+//   3. Arrows are single straight segments (horizontal or vertical),
+//      L-shapes (two segments), or self-loops on the same box.
+//   4. Arrows do not cross other arrows or other boxes.
+//   5. Arrows take the shortest path satisfying the rules; ties prefer
+//      fewer bends and the earliest valid column.
+//   6. By default, a target box sits in the SAME column as its source
+//      (boxes are vertically aligned with their source). A box is only
+//      moved right when the default column is occupied or the arrow
+//      would violate a rule.
+//
+// Geometry constants here must match the renderer's constants.
+
+const LAYOUT = {
+  COL_W: 200, BOX_W: 160, LANE_H: 110, LANE_GAP: 18,
+  PAD_L: 24, CAPTION_W: 150, PAD_T_TOP: 18,
+  TITLE_H_WHEN_PRESENT: 44, SECTION_H_WHEN_PRESENT: 32,
+  BOX_MIN_H: 42, TEXT_LINE_H: 15, BOX_PAD_V: 12, CHAR_BUDGET: 22,
+  LANE_START_OFFSET: 8,
+  LANE_END_PAD: 32,
+  SELF_LOOP_HEIGHT: 18,
+};
+
+function layoutMetrics(model) {
+  const L = LAYOUT;
+  const titleH = model.title ? L.TITLE_H_WHEN_PRESENT : 0;
+  const sectionH = model.sections.length > 0 ? L.SECTION_H_WHEN_PRESENT : 0;
+  const topOfLanes = L.PAD_T_TOP + titleH + sectionH;
+  return {
+    colX: c => L.PAD_L + L.CAPTION_W + c * L.COL_W + L.COL_W / 2,
+    laneY: i => topOfLanes + i * (L.LANE_H + L.LANE_GAP),
+    laneCY: i => topOfLanes + i * (L.LANE_H + L.LANE_GAP) + L.LANE_H / 2,
+    laneStartX: L.PAD_L + L.CAPTION_W + L.LANE_START_OFFSET,
+    topOfLanes,
+  };
+}
+
+function boxHeightFor(text) {
+  const L = LAYOUT;
+  const lines = wrap(text || "", L.CHAR_BUDGET);
+  return Math.max(L.BOX_MIN_H, lines.length * L.TEXT_LINE_H + L.BOX_PAD_V * 2);
+}
+
+function solveLayout(model) {
+  const L = LAYOUT;
+  const M = layoutMetrics(model);
+  const laneIdx = new Map(model.lanes.map((l, i) => [l, i]));
+
+  const placedBoxes = [];
+  const boxByPos = new Map(); // "col,lane" → placedBoxes index
+  // Track the lane ranges occupied by cross-lane arrows, keyed by column.
+  // Used in Phase 1 to push boxes right when a new cross-lane arrow would
+  // share a column with an existing one over an overlapping lane range
+  // (except for true counter-pairs which we render side-by-side instead).
+  const arrowsByCol = new Map(); // col → [{minLane, maxLane, fromI, toI}]
+  function arrowConflictsAtCol(col, fromI, toI) {
+    const existing = arrowsByCol.get(col);
+    if (!existing) return false;
+    const newMin = Math.min(fromI, toI);
+    const newMax = Math.max(fromI, toI);
+    for (const a of existing) {
+      // Lane-range overlap is a proxy for Y-range overlap of the vertical
+      // arrow segments at this column.
+      if (a.minLane >= newMax || newMin >= a.maxLane) continue;
+      // Counter-pair (A→B and B→A): rendered side-by-side, not a conflict.
+      if (a.fromI === toI && a.toI === fromI) continue;
+      return true;
+    }
+    return false;
+  }
+  function recordArrowAtCol(col, fromI, toI) {
+    if (fromI === toI) return;
+    if (!arrowsByCol.has(col)) arrowsByCol.set(col, []);
+    arrowsByCol.get(col).push({
+      minLane: Math.min(fromI, toI),
+      maxLane: Math.max(fromI, toI),
+      fromI, toI,
+    });
+  }
+
+  function colLaneTaken(col, lane) {
+    return boxByPos.has(`${col},${lane}`);
+  }
+  function getBoxAt(col, lane) {
+    const id = boxByPos.get(`${col},${lane}`);
+    return id !== undefined ? placedBoxes[id] : null;
+  }
+
+  // ----- Phase 1: assign each statement to a column -----
+  //
+  // Statements form chains. A chain continues as long as the previous
+  // statement's DESTINATION matches the current statement's SOURCE — i.e.,
+  // the previous receiver passes control to the next sender. Chained
+  // statements share a column so their boxes sit one directly below
+  // the next, connected by a vertical arrow.
+  //
+  // When the chain breaks (or after a note), a new column starts.
+  let lastStmtCol = -1;
+  let prevDestI = -1;
+
+  for (const ev of model.events) {
+    if (ev.type === "note") {
+      const tH = boxHeightFor(ev.text);
+      const maxCol = placedBoxes.reduce((m, p) => Math.max(m, p.col), -1);
+      ev.col = maxCol + 1;
+      ev.boxH = tH;
+      ev.arrowPath = null;
+      ev.selfLoop = false;
+      if (ev.lanes && ev.lanes.length > 0) {
+        const indices = ev.lanes.map(l => laneIdx.get(l)).filter(i => i !== undefined);
+        if (indices.length === 1) {
+          const id = placedBoxes.length;
+          placedBoxes.push({ col: ev.col, lane: indices[0], h: tH, type: "note" });
+          boxByPos.set(`${ev.col},${indices[0]}`, id);
+        } else if (indices.length > 1) {
+          indices.sort((a, b) => a - b);
+          const top = M.laneY(indices[0]) + 10;
+          const bottom = M.laneY(indices[indices.length - 1]) + L.LANE_H - 10;
+          const id = placedBoxes.length;
+          placedBoxes.push({
+            col: ev.col, type: "note", lanes: indices, h: bottom - top,
+            rect: {
+              left: M.colX(ev.col) - L.BOX_W / 2,
+              right: M.colX(ev.col) + L.BOX_W / 2,
+              top, bottom,
+            },
+          });
+          indices.forEach(li => boxByPos.set(`${ev.col},${li}`, id));
+        }
+      }
+      lastStmtCol = ev.col;
+      prevDestI = -1; // notes break any chain
+      continue;
+    }
+    if (ev.type !== "message") continue;
+
+    const fromI = laneIdx.get(ev.from);
+    const toI = laneIdx.get(ev.to);
+    if (fromI === undefined || toI === undefined) continue;
+    const tH = boxHeightFor(ev.text);
+
+    // Standalone (non-directed) boxes have no arrows of their own, but
+    // they DO honour the chain rule for column placement so the previous
+    // event's outgoing arrow can land on them. When the previous event
+    // sent control to this lane (prevDestI === fromI), the standalone box
+    // takes the same column so the cross-lane arrow terminates on it.
+    // Otherwise it goes to the next free column.
+    if (ev.standalone) {
+      let myCol;
+      if (prevDestI === fromI && lastStmtCol >= 0) {
+        myCol = lastStmtCol;
+      } else {
+        myCol = lastStmtCol + 1;
+      }
+      while (colLaneTaken(myCol, fromI)) myCol++;
+      ev.col = myCol;
+      ev.boxH = tH;
+      ev.selfLoop = false;
+      const id = placedBoxes.length;
+      placedBoxes.push({ col: myCol, lane: fromI, h: tH, type: "message" });
+      boxByPos.set(`${myCol},${fromI}`, id);
+      lastStmtCol = myCol;
+      prevDestI = -1;
+      continue;
+    }
+
+    let myCol;
+    if (prevDestI === fromI && lastStmtCol >= 0) {
+      myCol = lastStmtCol; // chain continues in the same column
+    } else {
+      myCol = lastStmtCol + 1; // new chain starts a new column
+    }
+    // Move right past columns where this box can't be placed:
+    //   * the (col, lane) slot is already taken, or
+    //   * a cross-lane arrow would pass through a box in an intermediate
+    //     lane, or
+    //   * a cross-lane arrow would visually overlap an existing arrow at
+    //     this column (excluding true counter-pairs A→B / B→A).
+    while (true) {
+      if (colLaneTaken(myCol, fromI)) { myCol++; continue; }
+      if (fromI !== toI) {
+        const minLane = Math.min(fromI, toI);
+        const maxLane = Math.max(fromI, toI);
+        let blocked = false;
+        for (let li = minLane + 1; li < maxLane; li++) {
+          if (getBoxAt(myCol, li)) { blocked = true; break; }
+        }
+        if (blocked) { myCol++; continue; }
+        if (arrowConflictsAtCol(myCol, fromI, toI)) { myCol++; continue; }
+      }
+      break;
+    }
+
+    ev.col = myCol;
+    ev.boxH = tH;
+    // Self-loops are no longer produced by any syntax; the <-> form now
+    // means "bidirectional same-lane links" (forward + backward).
+    ev.selfLoop = false;
+
+    const id = placedBoxes.length;
+    placedBoxes.push({ col: myCol, lane: fromI, h: tH, type: "message" });
+    boxByPos.set(`${myCol},${fromI}`, id);
+    recordArrowAtCol(myCol, fromI, toI);
+
+    lastStmtCol = myCol;
+    prevDestI = toI;
+  }
+
+  // ----- Phase 2: compute each statement's arrow -----
+  //
+  // Every message statement gets its OWN arrow that goes from its box
+  // (in the source lane) to a point in the destination lane at the same
+  // column. If a box happens to live at that column in the destination
+  // lane, the arrow lands on that box's top/bottom edge; otherwise it
+  // terminates at the destination lane's centre y.
+  //
+  // When two chained statements form a counter-pair at the same column
+  // (A → B at col N, then B → A at col N), the two arrows would
+  // overlap geometrically. We offset them ±10px so both stay visible:
+  // down-arrows shift left, up-arrows shift right.
+  for (let evIdx = 0; evIdx < model.events.length; evIdx++) {
+    const ev = model.events[evIdx];
+    if (ev.type !== "message") continue;
+    const fromI = laneIdx.get(ev.from);
+    const toI = laneIdx.get(ev.to);
+    if (fromI === undefined || toI === undefined) {
+      ev.arrowPath = null; ev.arrowPathIn = null; continue;
+    }
+
+    const myBox = getBoxAt(ev.col, fromI);
+    if (!myBox) { ev.arrowPath = null; ev.arrowPathIn = null; continue; }
+
+    ev.arrowPath = null;
+    ev.arrowPathIn = null;
+    ev.arrowFlow = false;
+
+    // ----- Outgoing arrow (forward link) -----
+    // Skipped for <: (incomingOnly) and Lane: text (standalone).
+    if (!ev.incomingOnly && !ev.standalone) {
+      if (fromI === toI) {
+        // Same-lane forward link — BLUE trail to the next box in this
+        // lane (message, standalone, or note). Stops the trail from
+        // running through a later note's footprint.
+        let nextBox = null;
+        for (const p of placedBoxes) {
+          if (p.col <= ev.col) continue;
+          if (p.lane === fromI || (p.lanes && p.lanes.includes(fromI))) {
+            if (!nextBox || p.col < nextBox.col) nextBox = p;
+          }
+        }
+        const cy = M.laneCY(fromI);
+        const aRight = M.colX(ev.col) + L.BOX_W / 2;
+        const bLeft = nextBox
+          ? M.colX(nextBox.col) - L.BOX_W / 2
+          : M.colX(ev.col) + L.COL_W - L.BOX_W / 2;
+        if (aRight < bLeft) {
+          ev.arrowPath = [{ x: aRight, y: cy }, { x: bLeft, y: cy }];
+          ev.arrowFlow = true;
+        }
+      } else {
+        // Cross-lane forward link — BLACK message arrow (vertical or elbow).
+        const myCy = M.laneCY(fromI);
+        const destCy = M.laneCY(toI);
+        const goingDown = destCy > myCy;
+        const colCx = M.colX(ev.col);
+
+        const minLane = Math.min(fromI, toI);
+        const maxLane = Math.max(fromI, toI);
+        let blocked = false;
+        for (let li = minLane + 1; li < maxLane; li++) {
+          if (getBoxAt(ev.col, li)) { blocked = true; break; }
+        }
+
+        if (blocked) {
+          const sourceX = colCx + L.BOX_W / 2;
+          let elbowX = colCx + L.COL_W / 2;
+          // If a counter-pair also routes around the same obstruction
+          // it would collide on the same elbow x. Offset the verticals
+          // by ±8 px in the inter-column gap, with the earlier event
+          // taking the inner position.
+          const counterEv = model.events.find(e =>
+            e !== ev && e.type === "message" && e.col === ev.col &&
+            laneIdx.get(e.from) === toI && laneIdx.get(e.to) === fromI
+          );
+          if (counterEv) {
+            const isFirst = model.events.indexOf(ev) < model.events.indexOf(counterEv);
+            elbowX += isFirst ? -8 : 8;
+            ev.labelSide = isFirst ? "left" : "right";
+          }
+          ev.arrowPath = [
+            { x: sourceX, y: myCy },
+            { x: elbowX, y: myCy },
+            { x: elbowX, y: destCy },
+          ];
+        } else {
+          // Look for a destination box at this column. If none is there,
+          // look ahead to the nearest later box in the destination lane —
+          // a message, standalone, or note. Route to that box with a
+          // Z-shape so the arrow lands on the actual "next thing" the
+          // receiver does instead of hanging in empty space.
+          let destBox = getBoxAt(ev.col, toI);
+          let destCol = ev.col;
+          if (!destBox) {
+            for (const p of placedBoxes) {
+              if (p.col <= ev.col) continue;
+              if (p.lane === toI || (p.lanes && p.lanes.includes(toI))) {
+                if (!destBox || p.col < destCol) {
+                  destBox = p;
+                  destCol = p.col;
+                }
+              }
+            }
+          }
+
+          if (destBox && destCol > ev.col) {
+            // Z-shape across columns: exit source top/bottom, vertical at
+            // source column to the destination lane's centre, then
+            // horizontal right into the destination box's LEFT edge.
+            const sourceX = colCx;
+            const sourceY = goingDown ? myCy + myBox.h / 2 : myCy - myBox.h / 2;
+            const destLeft = M.colX(destCol) - L.BOX_W / 2;
+            ev.arrowPath = [
+              { x: sourceX, y: sourceY },
+              { x: sourceX, y: destCy },
+              { x: destLeft, y: destCy },
+            ];
+          } else {
+            // Same column (or no destination box at all).
+            let hasCounter = false;
+            let counterEv = null;
+            if (destBox && destBox.type === "message") {
+              const found = model.events.find(e =>
+                e.type === "message" && e.col === ev.col && laneIdx.get(e.from) === toI
+              );
+              if (found && laneIdx.get(found.to) === fromI) {
+                hasCounter = true;
+                counterEv = found;
+              }
+            }
+            let isFirst = true;
+            if (hasCounter && counterEv) {
+              isFirst = model.events.indexOf(ev) < model.events.indexOf(counterEv);
+            }
+            const offset = hasCounter ? (isFirst ? -10 : 10) : 0;
+            const x = colCx + offset;
+            const sourceY = goingDown ? myCy + myBox.h / 2 : myCy - myBox.h / 2;
+            const destY = destBox
+              ? (goingDown ? destCy - destBox.h / 2 : destCy + destBox.h / 2)
+              : destCy;
+            ev.arrowPath = [
+              { x, y: sourceY },
+              { x, y: destY },
+            ];
+            if (hasCounter) ev.labelSide = isFirst ? "left" : "right";
+          }
+        }
+      }
+    }
+
+    // ----- Incoming arrow (backward link) -----
+    // Drawn for <-> and <: events: a blue horizontal arrow from the previous
+    // same-source box in this event's source lane. Dedupes when the previous
+    // event already owns a same-lane forward link to this box.
+    if ((ev.bidirectional || ev.incomingOnly) && !ev.standalone) {
+      let prevBox = null, prevEv = null;
+      for (let j = evIdx - 1; j >= 0; j--) {
+        const e = model.events[j];
+        if (e.type !== "message") continue;
+        if (laneIdx.get(e.from) !== fromI) continue;
+        if (typeof e.col !== "number" || e.col >= ev.col) continue;
+        if (e.standalone) continue;
+        const b = getBoxAt(e.col, fromI);
+        if (b) { prevBox = b; prevEv = e; break; }
+      }
+      if (prevBox && prevEv) {
+        const prevIsSameLane = laneIdx.get(prevEv.from) === laneIdx.get(prevEv.to);
+        const prevHasOut = prevIsSameLane && !prevEv.incomingOnly && !prevEv.standalone;
+        if (!prevHasOut) {
+          const cy = M.laneCY(fromI);
+          const aRight = M.colX(prevBox.col) + L.BOX_W / 2;
+          const bLeft = M.colX(ev.col) - L.BOX_W / 2;
+          if (aRight < bLeft) {
+            ev.arrowPathIn = [{ x: aRight, y: cy }, { x: bLeft, y: cy }];
+          }
+        }
+      }
+    }
+  }
+
+  // Within-lane blue connectors are now driven by A -> A statements
+  // (Phase 2 above sets ev.arrowFlow = true on them). There are no
+  // automatically-generated blue arrows.
+  model.flowArrows = [];
+
+  // Map section event-index references to column references for the renderer.
+  for (const s of model.sections) {
+    const startEv = model.events[s.start];
+    const endEv = model.events[s.end];
+    s.startCol = startEv ? startEv.col : 0;
+    s.endCol = endEv ? endEv.col : 0;
+  }
+}
+
+// ---------- renderer ----------
+//
+// Layout model:
+//   * Each `A -> B: text` message becomes a labelled activity box in lane B
+//     at the message's column. An arrow connects from the previous box in
+//     lane A (or from A's lane start, if none) to this new box.
+//   * `A -> A: text` (self-message) draws a small loop arrow on top of the
+//     box in addition to any chaining arrow.
+//   * Arrows are either: (a) straight horizontal (same lane); (b) elbowed
+//     L-shape: right → vertical → right (different lanes); (c) loop on a
+//     box (self-message). All segments are vertical or left-to-right.
+//   * Notes render as yellow boxes (single lane or spanning multiple lanes).
+//   * Sections render as labelled banners above the lanes.
+
+function render(model) {
+  const L = LAYOUT;
+  const numLanes = model.lanes.length;
+  const hasSections = model.sections.length > 0;
+
+  // Number of columns is derived from the maximum solved column.
+  let maxCol = -1;
+  for (const ev of model.events) {
+    if (typeof ev.col === "number" && ev.col > maxCol) maxCol = ev.col;
+  }
+  const numCols = Math.max(maxCol + 1, 1);
+
+  const PAD_R = 32;
+  const PAD_B = 28;
+  const TITLE_H = model.title ? L.TITLE_H_WHEN_PRESENT : 0;
+  const SECTION_H = hasSections ? L.SECTION_H_WHEN_PRESENT : 0;
+  const TOP_OF_LANES = L.PAD_T_TOP + TITLE_H + SECTION_H;
+
+  const totalW = L.PAD_L + L.CAPTION_W + numCols * L.COL_W + L.LANE_END_PAD + PAD_R;
+  const totalH = TOP_OF_LANES + numLanes * L.LANE_H + (numLanes - 1) * L.LANE_GAP + PAD_B;
+
+  const laneIdx = new Map();
+  model.lanes.forEach((l, i) => laneIdx.set(l, i));
+
+  const laneY = i => TOP_OF_LANES + i * (L.LANE_H + L.LANE_GAP);
+  const laneCY = i => laneY(i) + L.LANE_H / 2;
+  const colX = c => L.PAD_L + L.CAPTION_W + c * L.COL_W + L.COL_W / 2;
+
+  const parts = [];
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalW} ${totalH}" width="${totalW}" height="${totalH}" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif">`);
+
+  parts.push(`<defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#374151"/>
+    </marker>
+    <marker id="ah-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+  </defs>`);
+
+  if (model.title) {
+    parts.push(`<text x="${totalW / 2}" y="${L.PAD_T_TOP + 26}" text-anchor="middle" font-size="18" font-weight="600" fill="#111827">${escXml(model.title)}</text>`);
+  }
+
+  if (hasSections) {
+    const bannerY = TOP_OF_LANES - SECTION_H + 6;
+    for (const s of model.sections) {
+      const sc = typeof s.startCol === "number" ? s.startCol : s.start;
+      const ec = typeof s.endCol === "number" ? s.endCol : s.end;
+      if (sc > ec) continue;
+      const x1 = colX(sc) - L.COL_W / 2 + 4;
+      const x2 = colX(ec) + L.COL_W / 2 - 4;
+      const w = x2 - x1;
+      parts.push(`<rect x="${x1}" y="${bannerY}" width="${w}" height="22" rx="6" ry="6" fill="#eff6ff" stroke="#bfdbfe"/>`);
+      parts.push(`<text x="${(x1 + x2) / 2}" y="${bannerY + 15}" text-anchor="middle" font-size="12" font-weight="600" fill="#1d4ed8">${escXml(s.label)}</text>`);
+      parts.push(`<line x1="${x1}" y1="${TOP_OF_LANES - 2}" x2="${x1}" y2="${totalH - PAD_B + 4}" stroke="#dbeafe" stroke-dasharray="3 4" stroke-width="1"/>`);
+      parts.push(`<line x1="${x2}" y1="${TOP_OF_LANES - 2}" x2="${x2}" y2="${totalH - PAD_B + 4}" stroke="#dbeafe" stroke-dasharray="3 4" stroke-width="1"/>`);
+    }
+  }
+
+  // Lane frames span the full lane area (caption + box columns) and the
+  // caption is rendered as text inside the lane at its left edge,
+  // before the first box.
+  model.lanes.forEach((lane, i) => {
+    const y = laneY(i);
+    const frameX = L.PAD_L;
+    const frameW = L.CAPTION_W + numCols * L.COL_W + L.LANE_END_PAD;
+    parts.push(`<rect x="${frameX}" y="${y}" width="${frameW}" height="${L.LANE_H}" rx="10" ry="10" fill="#fafbfc" stroke="#d6dae0" stroke-width="1.25"/>`);
+
+    const capLines = lane.split("\n");
+    const cy = y + L.LANE_H / 2;
+    const capLineH = 16;
+    const startY = cy - ((capLines.length - 1) * capLineH) / 2;
+    capLines.forEach((ln, k) => {
+      parts.push(`<text x="${L.PAD_L + 18}" y="${startY + k * capLineH}" text-anchor="start" dominant-baseline="middle" fill="#1f2937" font-size="14" font-weight="600">${escXml(ln)}</text>`);
+    });
+  });
+
+  // Build the visual model from the solver's output. Each event has its
+  // resolved col + boxH and (for messages) the arrow segments.
+  const boxes = [];
+  const floatingNotes = [];
+
+  model.events.forEach(ev => {
+    if (ev.type === "message") {
+      // Activity box sits in the SOURCE (sender) lane.
+      const fromI = laneIdx.get(ev.from);
+      if (fromI === undefined) return;
+      const lines = wrap(ev.text || "", L.CHAR_BUDGET);
+      const h = ev.boxH || boxHeightFor(ev.text);
+      const toI = laneIdx.get(ev.to);
+      const labelCenterY = (toI !== undefined && toI !== fromI)
+        ? (laneCY(fromI) + laneCY(toI)) / 2
+        : null;
+      boxes.push({
+        col: ev.col,
+        cx: colX(ev.col),
+        cy: laneCY(fromI),
+        w: L.BOX_W,
+        h,
+        lines,
+        type: "activity",
+        dashed: ev.dashed,
+        selfLoop: ev.selfLoop,
+        arrowPath: ev.arrowPath || null,
+        arrowFlow: !!ev.arrowFlow,
+        arrowPathIn: ev.arrowPathIn || null,
+        arrowLabel: ev.arrowLabel || null,
+        labelSide: ev.labelSide || null,
+        arrowLabelCenterY: labelCenterY,
+      });
+    } else if (ev.type === "note") {
+      const lines = wrap(ev.text || "", L.CHAR_BUDGET);
+      if (!ev.lanes || ev.lanes.length === 0) {
+        floatingNotes.push({ cx: colX(ev.col), lines });
+        return;
+      }
+      const indices = ev.lanes.map(l => laneIdx.get(l)).filter(i => i !== undefined).sort((a, b) => a - b);
+      if (!indices.length) return;
+      const top = laneY(indices[0]) + 10;
+      const bottom = laneY(indices[indices.length - 1]) + L.LANE_H - 10;
+      boxes.push({
+        col: ev.col,
+        cx: colX(ev.col),
+        cy: (top + bottom) / 2,
+        w: L.BOX_W,
+        h: bottom - top,
+        lines,
+        type: "note",
+      });
+    }
+  });
+
+  // Floating notes above the lane area
+  floatingNotes.forEach(fn => {
+    const w = L.BOX_W;
+    const h = Math.max(24, fn.lines.length * L.TEXT_LINE_H + 10);
+    const cy = Math.max(L.PAD_T_TOP + TITLE_H + h / 2, 8 + h / 2);
+    parts.push(`<rect x="${fn.cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" rx="4" fill="#fef3c7" stroke="#f59e0b"/>`);
+    const startDy = -(fn.lines.length - 1) * L.TEXT_LINE_H / 2;
+    const tspans = fn.lines.map((ln, i) => `<tspan x="${fn.cx}" dy="${i === 0 ? startDy : L.TEXT_LINE_H}">${escXml(ln)}</tspan>`).join("");
+    parts.push(`<text x="${fn.cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-size="11" fill="#78350f">${tspans}</text>`);
+  });
+
+  // Render arrow segments precomputed by the solver, then self-loops, all
+  // behind the box rectangles so the boxes draw on top.
+  // Blue within-lane flow arrows (drawn behind boxes and message arrows).
+  if (model.flowArrows && model.flowArrows.length) {
+    for (const fa of model.flowArrows) {
+      if (!fa.path || fa.path.length < 2) continue;
+      const d = polylineToPath(fa.path);
+      parts.push(`<path d="${d}" fill="none" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>`);
+    }
+  }
+
+  boxes.forEach(box => {
+    if (box.type !== "activity") return;
+    const dash = box.dashed ? ' stroke-dasharray="6 4"' : "";
+    if (box.arrowPath && box.arrowPath.length >= 2) {
+      const d = polylineToPath(box.arrowPath);
+      parts.push(`<path d="${d}" fill="none" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"${dash}/>`);
+    }
+    if (box.arrowPathIn && box.arrowPathIn.length >= 2) {
+      const d = polylineToPath(box.arrowPathIn);
+      parts.push(`<path d="${d}" fill="none" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>`);
+    }
+    if (box.arrowLabel) {
+      // The caption attaches to the FORWARD arrow when one exists (-> and
+      // <->). When only an incoming arrow exists (the <: form), the
+      // caption goes on it instead.
+      if (box.arrowPath) {
+        parts.push(arrowLabelSvg(box.arrowPath, box.arrowLabel, box.labelSide, box.arrowLabelCenterY));
+      } else if (box.arrowPathIn) {
+        parts.push(arrowLabelSvg(box.arrowPathIn, box.arrowLabel));
+      }
+    }
+    if (box.selfLoop) {
+      const x1 = box.cx - 16;
+      const x2 = box.cx + 16;
+      const yTop = box.cy - box.h / 2;
+      const yArc = yTop - L.SELF_LOOP_HEIGHT;
+      const d = polylineToPath([
+        { x: x1, y: yTop },
+        { x: x1, y: yArc },
+        { x: x2, y: yArc },
+        { x: x2, y: yTop },
+      ]);
+      parts.push(`<path d="${d}" fill="none" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"${dash}/>`);
+    }
+  });
+
+  // Render the boxes in front of the arrows
+  boxes.forEach(box => {
+    const x = box.cx - box.w / 2;
+    const y = box.cy - box.h / 2;
+    if (box.type === "activity") {
+      parts.push(`<rect x="${x}" y="${y}" width="${box.w}" height="${box.h}" rx="6" ry="6" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.25"/>`);
+    } else if (box.type === "note") {
+      parts.push(`<rect x="${x}" y="${y}" width="${box.w}" height="${box.h}" rx="6" ry="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.1"/>`);
+    }
+    const startDy = -(box.lines.length - 1) * L.TEXT_LINE_H / 2;
+    const tspans = box.lines.map((ln, i) => `<tspan x="${box.cx}" dy="${i === 0 ? startDy : L.TEXT_LINE_H}">${escXml(ln)}</tspan>`).join("");
+    const fill = box.type === "note" ? "#78350f" : "#1e3a8a";
+    parts.push(`<text x="${box.cx}" y="${box.cy}" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="${fill}" font-weight="500">${tspans}</text>`);
+  });
+
+  parts.push(`</svg>`);
+  return parts.join("");
+}
+
+// Convert a list of solver-emitted segments (each {type:'h',x1,x2,y} or
+// {type:'v',x,y1,y2}) into a single SVG path string. The first segment
+// gets a moveto; subsequent segments are joined as line-tos.
+function segmentsToPath(segs) {
+  if (!segs || segs.length === 0) return "";
+  const first = segs[0];
+  const start = first.type === "h"
+    ? { x: first.x1, y: first.y }
+    : { x: first.x, y: first.y1 };
+  const parts = [`M ${start.x} ${start.y}`];
+  let cur = start;
+  // For each segment we step from `cur` to the segment's far end. Because
+  // segments are emitted in path order from the solver, the far end is
+  // whichever endpoint is not equal to `cur`.
+  for (const s of segs) {
+    let nx, ny;
+    if (s.type === "h") {
+      const a = { x: s.x1, y: s.y };
+      const b = { x: s.x2, y: s.y };
+      ({ x: nx, y: ny } = (Math.abs(a.x - cur.x) + Math.abs(a.y - cur.y) < 0.5) ? b : a);
+    } else {
+      const a = { x: s.x, y: s.y1 };
+      const b = { x: s.x, y: s.y2 };
+      ({ x: nx, y: ny } = (Math.abs(a.x - cur.x) + Math.abs(a.y - cur.y) < 0.5) ? b : a);
+    }
+    parts.push(`L ${nx} ${ny}`);
+    cur = { x: nx, y: ny };
+  }
+  return parts.join(" ");
+}
+
+// Convert a polyline (array of {x,y}) to an SVG path string with rounded
+// corners at every interior point. The corner radius is automatically
+// clamped to half the length of the shorter adjacent segment so corners
+// never overshoot. Two-point paths return a plain straight line.
+function polylineToPath(points, radius = 8) {
+  if (!points || points.length < 2) return "";
+  if (points.length === 2) {
+    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+  }
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const next = points[i + 1];
+    const d1 = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+    const d2 = Math.hypot(next.x - curr.x, next.y - curr.y);
+    const r = Math.min(radius, d1 / 2, d2 / 2);
+    if (r < 0.5) {
+      d += ` L ${curr.x} ${curr.y}`;
+      continue;
+    }
+    const t1 = r / d1;
+    const t2 = r / d2;
+    const p1x = curr.x + (prev.x - curr.x) * t1;
+    const p1y = curr.y + (prev.y - curr.y) * t1;
+    const p2x = curr.x + (next.x - curr.x) * t2;
+    const p2y = curr.y + (next.y - curr.y) * t2;
+    d += ` L ${p1x} ${p1y} Q ${curr.x} ${curr.y} ${p2x} ${p2y}`;
+  }
+  const last = points[points.length - 1];
+  d += ` L ${last.x} ${last.y}`;
+  return d;
+}
+
+// Render an italic caption tied to an arrow. Horizontal arrows get the
+// label centred above the longest segment; vertical arrows get the label
+// to the side of the longest segment (right by default, or left/right
+// when explicitly forced — used when a box has both an outgoing and an
+// incoming arrow that would otherwise overlap).
+function arrowLabelSvg(arrowPath, label, side, centerY) {
+  if (!label || !arrowPath || arrowPath.length < 2) return "";
+  let bestI = 0, bestLen = 0;
+  for (let i = 0; i < arrowPath.length - 1; i++) {
+    const p1 = arrowPath[i], p2 = arrowPath[i + 1];
+    const len = Math.abs(p2.x - p1.x) + Math.abs(p2.y - p1.y);
+    if (len > bestLen) { bestLen = len; bestI = i; }
+  }
+  const p1 = arrowPath[bestI], p2 = arrowPath[bestI + 1];
+  const midX = (p1.x + p2.x) / 2;
+  const midY = (p1.y + p2.y) / 2;
+  const isHorizontal = Math.abs(p1.y - p2.y) < 0.5;
+
+  const fontSize = 11;
+  const lineH = 13;
+  const maxChars = isHorizontal ? 24 : 14;
+  const lines = wrap(label, maxChars);
+
+  let x, y, anchor, baseline;
+  if (isHorizontal) {
+    x = midX;
+    y = midY - 6;
+    anchor = "middle";
+    baseline = "auto";
+  } else {
+    const useSide = side || "right";
+    if (useSide === "left") {
+      x = midX - 8;
+      anchor = "end";
+    } else {
+      x = midX + 8;
+      anchor = "start";
+    }
+    // Prefer the caller's centerY (midpoint between source and destination
+    // box centres) so labels are exactly between the boxes regardless of
+    // box height differences. Fall back to the arrow segment's geometric
+    // midpoint when no centerY is supplied.
+    y = (typeof centerY === "number") ? centerY : midY;
+    baseline = "middle";
+  }
+
+  const startDy = isHorizontal
+    ? -(lines.length - 1) * lineH
+    : -(lines.length - 1) * lineH / 2;
+  const tspans = lines.map((ln, i) => {
+    const dy = i === 0 ? startDy : lineH;
+    return `<tspan x="${x}" dy="${dy}">${escXml(ln)}</tspan>`;
+  }).join("");
+  return `<text x="${x}" y="${y}" text-anchor="${anchor}" dominant-baseline="${baseline}" font-size="${fontSize}" fill="#475569" font-style="italic">${tspans}</text>`;
+}
+
+function wrap(text, maxChars) {
+  const lines = [];
+  for (const para of String(text).split("\n")) {
+    if (!para) { lines.push(""); continue; }
+    let cur = "";
+    for (const word of para.split(/\s+/)) {
+      if (!word) continue;
+      if (!cur) cur = word;
+      else if (cur.length + 1 + word.length <= maxChars) cur += " " + word;
+      else { lines.push(cur); cur = word; }
+    }
+    if (cur) lines.push(cur);
+  }
+  return lines.length ? lines : [""];
+}
+
+// ---------- driver ----------
+const editor = document.getElementById("editor");
+const diagram = document.getElementById("diagram");
+const sizeInfo = document.getElementById("size-info");
+const status = document.getElementById("status");
+
+let renderTimer = null;
+function scheduleRender() {
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(doRender, 80);
+}
+
+function doRender() {
+  const src = editor.value;
+  let model;
+  try {
+    model = parse(src);
+    solveLayout(model);
+  } catch (e) {
+    diagram.innerHTML = `<div class="error">Layout error: ${escXml(e.message)}</div>`;
+    return;
+  }
+  if (!model.lanes.length) {
+    diagram.innerHTML = `<div class="error">No participants yet. Try: <code>Alice -&gt; Bob: hello</code></div>`;
+    sizeInfo.textContent = "";
+    status.textContent = "";
+    return;
+  }
+  const svgString = render(model);
+  diagram.innerHTML = svgString;
+  const svg = diagram.querySelector("svg");
+  if (svg) {
+    sizeInfo.textContent = `${svg.getAttribute("width")} × ${svg.getAttribute("height")}`;
+  }
+  status.textContent = model.errors.length
+    ? `${model.errors.length} parse warning${model.errors.length === 1 ? "" : "s"}`
+    : `${model.lanes.length} lane${model.lanes.length === 1 ? "" : "s"}, ${model.events.length} event${model.events.length === 1 ? "" : "s"}`;
+  if (model.errors.length) {
+    const warn = document.createElement("div");
+    warn.className = "error";
+    warn.textContent = model.errors.join("\n");
+    diagram.appendChild(warn);
+  }
+}
+
+editor.addEventListener("input", scheduleRender);
+
+document.getElementById("sample-picker").addEventListener("change", e => {
+  const k = e.target.value;
+  if (!k) return;
+  editor.value = SAMPLES[k];
+  doRender();
+  e.target.value = "";
+});
+
+document.getElementById("copy-source").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(editor.value);
+    flashStatus("Copied source");
+  } catch (e) {
+    flashStatus("Copy failed");
+  }
+});
+
+function currentSvgXml() {
+  const svg = diagram.querySelector("svg");
+  if (!svg) return null;
+  const clone = svg.cloneNode(true);
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  return '<?xml version="1.0" encoding="UTF-8"?>\n' + clone.outerHTML;
+}
+
+// Rasterise the current SVG to a PNG Blob at the given scale (defaults to 2x
+// for crisp output). The SVG is drawn onto a white-backed canvas.
+async function currentPngBlob(scale = 2) {
+  const svg = diagram.querySelector("svg");
+  if (!svg) return null;
+  const xml = currentSvgXml();
+  if (!xml) return null;
+  const w = parseFloat(svg.getAttribute("width")) || svg.viewBox.baseVal.width;
+  const h = parseFloat(svg.getAttribute("height")) || svg.viewBox.baseVal.height;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(w * scale);
+  canvas.height = Math.ceil(h * scale);
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const svgBlob = new Blob([xml], { type: "image/svg+xml;charset=utf-8" });
+  const svgUrl = URL.createObjectURL(svgBlob);
+  try {
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = svgUrl;
+    });
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  } finally {
+    URL.revokeObjectURL(svgUrl);
+  }
+  return new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById("download-svg").addEventListener("click", () => {
+  const xml = currentSvgXml();
+  if (!xml) return;
+  triggerDownload(new Blob([xml], { type: "image/svg+xml" }), "swimlane.svg");
+});
+
+document.getElementById("download-png").addEventListener("click", async () => {
+  try {
+    const blob = await currentPngBlob();
+    if (blob) triggerDownload(blob, "swimlane.png");
+  } catch (e) {
+    flashStatus("PNG export failed");
+  }
+});
+
+document.getElementById("copy-svg").addEventListener("click", async () => {
+  const xml = currentSvgXml();
+  if (!xml) return;
+  try {
+    await navigator.clipboard.writeText(xml);
+    flashStatus("Copied SVG");
+  } catch (e) {
+    flashStatus("Copy failed");
+  }
+});
+
+document.getElementById("copy-png").addEventListener("click", async () => {
+  try {
+    const blob = await currentPngBlob();
+    if (!blob) return;
+    if (!navigator.clipboard || !window.ClipboardItem) {
+      flashStatus("PNG clipboard not supported");
+      return;
+    }
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    flashStatus("Copied PNG");
+  } catch (e) {
+    flashStatus("Copy PNG failed");
+  }
+});
+
+function flashStatus(msg) {
+  const prev = status.textContent;
+  status.textContent = msg;
+  setTimeout(() => { if (status.textContent === msg) status.textContent = prev; }, 1400);
+}
+
+// ---------- pane resizer ----------
+(function setupResizer() {
+  const resizer = document.getElementById("resizer");
+  const mainEl = document.querySelector("main");
+  if (!resizer || !mainEl) return;
+
+  const SPLIT_X_KEY = "swimlane-studio-split-x";
+  const SPLIT_Y_KEY = "swimlane-studio-split-y";
+
+  // Drag bookkeeping. We support pointer events for mouse and touch alike.
+  let active = false;
+  let startPos = 0;       // pointer x or y at drag start (px)
+  let startSize = 0;      // editor width or height in px at drag start
+  let axis = "x";         // "x" for vertical resizer, "y" for horizontal (mobile)
+
+  function isHorizontalLayout() {
+    return window.matchMedia("(max-width: 820px)").matches;
+  }
+
+  function currentEditorSize() {
+    const editorPane = mainEl.firstElementChild;
+    const r = editorPane.getBoundingClientRect();
+    return isHorizontalLayout() ? r.height : r.width;
+  }
+
+  function setEditorSize(px, persist = true) {
+    const mainRect = mainEl.getBoundingClientRect();
+    const horizontal = isHorizontalLayout();
+    const total = horizontal ? mainRect.height : mainRect.width;
+    const min = 180;
+    const max = Math.max(min, total - 240);
+    const clamped = Math.max(min, Math.min(max, px));
+    const prop = horizontal ? "--editor-h" : "--editor-w";
+    mainEl.style.setProperty(prop, clamped + "px");
+    if (persist) {
+      try {
+        localStorage.setItem(horizontal ? SPLIT_Y_KEY : SPLIT_X_KEY, String(clamped));
+      } catch {}
+    }
+  }
+
+  // Restore saved split on load.
+  try {
+    const horizontal = isHorizontalLayout();
+    const saved = localStorage.getItem(horizontal ? SPLIT_Y_KEY : SPLIT_X_KEY);
+    if (saved != null) {
+      const n = parseFloat(saved);
+      if (Number.isFinite(n) && n > 0) {
+        mainEl.style.setProperty(horizontal ? "--editor-h" : "--editor-w", n + "px");
+      }
+    }
+  } catch {}
+
+  resizer.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    resizer.setPointerCapture(e.pointerId);
+    axis = isHorizontalLayout() ? "y" : "x";
+    startPos = axis === "x" ? e.clientX : e.clientY;
+    startSize = currentEditorSize();
+    active = true;
+    document.body.classList.add("resizing");
+    resizer.classList.add("dragging");
+  });
+  resizer.addEventListener("pointermove", e => {
+    if (!active) return;
+    const cur = axis === "x" ? e.clientX : e.clientY;
+    setEditorSize(startSize + (cur - startPos));
+  });
+  function endDrag(e) {
+    if (!active) return;
+    active = false;
+    document.body.classList.remove("resizing");
+    resizer.classList.remove("dragging");
+    if (e && e.pointerId !== undefined) {
+      try { resizer.releasePointerCapture(e.pointerId); } catch {}
+    }
+  }
+  resizer.addEventListener("pointerup", endDrag);
+  resizer.addEventListener("pointercancel", endDrag);
+
+  // Keyboard nudges for accessibility.
+  resizer.addEventListener("keydown", e => {
+    const horizontal = isHorizontalLayout();
+    const stepKeys = horizontal
+      ? { ArrowUp: -20, ArrowDown: 20 }
+      : { ArrowLeft: -20, ArrowRight: 20 };
+    const delta = stepKeys[e.key];
+    if (delta === undefined) return;
+    e.preventDefault();
+    setEditorSize(currentEditorSize() + delta);
+  });
+
+  // Double-click resets the split to the default.
+  resizer.addEventListener("dblclick", () => {
+    mainEl.style.removeProperty("--editor-w");
+    mainEl.style.removeProperty("--editor-h");
+    try {
+      localStorage.removeItem(SPLIT_X_KEY);
+      localStorage.removeItem(SPLIT_Y_KEY);
+    } catch {}
+  });
+})();
+
+// ---------- source persistence ----------
+// Persist the editor content across reloads so hot-reload doesn't blow
+// away the in-progress diagram. Loaded on startup, written on every edit.
+const SRC_STORAGE_KEY = "swimlane-studio-source";
+const savedSource = (() => {
+  try { return localStorage.getItem(SRC_STORAGE_KEY); }
+  catch { return null; }
+})();
+editor.addEventListener("input", () => {
+  try { localStorage.setItem(SRC_STORAGE_KEY, editor.value); }
+  catch {}
+});
+// Explicit sample picks should overwrite the saved source.
+document.getElementById("sample-picker").addEventListener("change", () => {
+  try { localStorage.setItem(SRC_STORAGE_KEY, editor.value); }
+  catch {}
+});
+
+// ---------- hot reload ----------
+// When index.html changes on disk (Last-Modified moves), reload the page
+// automatically. The editor content survives because we restored it from
+// localStorage above. Only enabled on http/https (Python's http.server
+// returns Last-Modified out of the box).
+(function setupHotReload() {
+  if (!location.protocol.startsWith("http")) return;
+  let initialModified = null;
+  let consecutiveErrors = 0;
+  async function check() {
+    try {
+      const res = await fetch(location.href, { method: "HEAD", cache: "no-store" });
+      const lm = res.headers.get("Last-Modified");
+      consecutiveErrors = 0;
+      if (!lm) return;
+      if (initialModified === null) {
+        initialModified = lm;
+      } else if (lm !== initialModified) {
+        location.reload();
+      }
+    } catch {
+      // If the server momentarily disappears (e.g. restart), back off.
+      consecutiveErrors++;
+    }
+  }
+  setInterval(check, 1500);
+  check();
+})();
+
+// initial load
+editor.value = savedSource != null ? savedSource : SAMPLES.order;
+doRender();
+</script>
+</body>
+</html>
