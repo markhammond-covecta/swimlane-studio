@@ -80,6 +80,24 @@
     background: #f3f4f6;
     border-color: #c8ccd2;
   }
+  /* Brief success flash applied to copy/save buttons after a successful
+     action so the user gets immediate visual confirmation. */
+  header button.flash-ok, .source-actions button.flash-ok {
+    background: #10b981;
+    border-color: #059669;
+    color: #ffffff;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+  }
+  header button.flash-ok:hover, .source-actions button.flash-ok:hover {
+    background: #059669;
+    border-color: #047857;
+  }
+  header button.flash-err, .source-actions button.flash-err {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #b91c1c;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+  }
   header button.primary {
     background: var(--accent);
     border-color: var(--accent);
@@ -216,20 +234,57 @@
     letter-spacing: 0;
   }
 
-  #editor {
+  .editor-stack {
+    position: relative;
     flex: 1 1 auto;
-    width: 100%;
-    border: none;
-    outline: none;
-    resize: none;
+    min-height: 0;
+    overflow: hidden;
+  }
+  #editor, #editor-highlight {
+    position: absolute;
+    inset: 0;
+    margin: 0;
     padding: 16px 18px;
     font-family: var(--mono);
     font-size: 13px;
+    font-weight: normal;
+    font-style: normal;
     line-height: 1.6;
+    letter-spacing: 0;
+    tab-size: 2;
+    -moz-tab-size: 2;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-break: normal;
+    box-sizing: border-box;
+    border: 0;
+  }
+  #editor {
+    width: 100%;
+    height: 100%;
+    outline: none;
+    resize: none;
+    color: transparent;
+    caret-color: var(--ink);
+    background: transparent;
+    z-index: 2;
+    overflow: auto;
+  }
+  #editor-highlight {
+    z-index: 1;
     color: var(--ink);
     background: var(--panel);
-    tab-size: 2;
+    pointer-events: none;
+    overflow: hidden;
   }
+  /* Syntax tokens */
+  #editor-highlight .hl-comment    { color: #15803d; font-style: italic; }
+  #editor-highlight .hl-directive  { color: #c2410c; }
+  #editor-highlight .hl-section    { color: #c2410c; }
+  #editor-highlight .hl-op         { color: #c026d3; }
+  #editor-highlight .hl-lane       { color: #1d4ed8; }
+  #editor-highlight .hl-caption    { color: #1f2937; }
+  #editor-highlight .hl-arrow-label { color: #0891b2; font-style: italic; }
 
   #diagram-wrap {
     flex: 1 1 auto;
@@ -250,6 +305,20 @@
     border: 1px solid var(--line);
     border-radius: 10px;
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+  /* Two-way highlight: hovering or clicking a shape (or moving the
+     editor caret onto its source line) emphasises both. */
+  #diagram svg [data-line] { cursor: pointer; }
+  #diagram svg rect[data-line].source-active {
+    stroke: #eab308;
+    stroke-width: 3;
+  }
+  #diagram svg path[data-line].source-active {
+    stroke: #eab308;
+    stroke-width: 2.5;
+  }
+  #diagram svg text[data-line].source-active {
+    fill: #854d0e;
   }
 
   .error {
@@ -385,7 +454,10 @@
         <span>Source</span>
         <span id="status"></span>
       </div>
-      <textarea id="editor" spellcheck="false" autocomplete="off"></textarea>
+      <div class="editor-stack">
+        <pre id="editor-highlight" aria-hidden="true"></pre>
+        <textarea id="editor" spellcheck="false" autocomplete="off"></textarea>
+      </div>
       <div class="source-actions">
         <button id="new-button" title="Start a new diagram">New</button>
         <button id="load-button" title="Load a .txt file">Load</button>
@@ -489,13 +561,13 @@ function parse(source) {
       continue;
     }
     if ((m = line.match(sectionRe))) {
-      events.push({ type: "section", label: m[1] });
+      events.push({ type: "section", label: m[1], lineNo });
       continue;
     }
     if ((m = line.match(noteRe))) {
       const targets = m[1] ? m[1].split(",").map(s => s.trim()).filter(Boolean) : [];
       targets.forEach(l => lanesSeen.add(l));
-      events.push({ type: "note", lanes: targets, text: unescapeLabel(m[2] || "") });
+      events.push({ type: "note", lanes: targets, text: unescapeLabel(m[2] || ""), lineNo });
       continue;
     }
     if ((m = line.match(arrowRe))) {
@@ -521,7 +593,7 @@ function parse(source) {
         const dashed = arrow.includes("--");
         lanesSeen.add(from);
         lanesSeen.add(to);
-        events.push({ type: "message", from, to, text, dashed, bidirectional: true, arrowLabel });
+        events.push({ type: "message", from, to, text, dashed, bidirectional: true, arrowLabel, lineNo });
         continue;
       }
       const counter = /^>-{1,2}>$/.test(arrow);
@@ -530,7 +602,7 @@ function parse(source) {
       if (reversed) [from, to] = [to, from];
       lanesSeen.add(from);
       lanesSeen.add(to);
-      events.push({ type: "message", from, to, text, dashed, arrowLabel, counter });
+      events.push({ type: "message", from, to, text, dashed, arrowLabel, counter, lineNo });
       continue;
     }
 
@@ -543,7 +615,7 @@ function parse(source) {
       const { caption: text, arrowLabel } = splitArrowLabel(raw);
       if (lane && text) {
         lanesSeen.add(lane);
-        events.push({ type: "message", from: lane, to: lane, text, incomingOnly: true, arrowLabel });
+        events.push({ type: "message", from: lane, to: lane, text, incomingOnly: true, arrowLabel, lineNo });
         continue;
       }
     }
@@ -556,7 +628,7 @@ function parse(source) {
       const text = unescapeLabel(m[2].trim());
       if (lane && text) {
         lanesSeen.add(lane);
-        events.push({ type: "message", from: lane, to: lane, text, standalone: true });
+        events.push({ type: "message", from: lane, to: lane, text, standalone: true, lineNo });
         continue;
       }
     }
@@ -587,7 +659,7 @@ function parse(source) {
   for (const ev of events) {
     if (ev.type === "section") {
       if (currentSection) currentSection.end = positioned.length - 1;
-      currentSection = { label: ev.label, start: positioned.length, end: positioned.length };
+      currentSection = { label: ev.label, start: positioned.length, end: positioned.length, lineNo: ev.lineNo };
       sections.push(currentSection);
     } else {
       ev.col = positioned.length;
@@ -1326,8 +1398,14 @@ function render(model) {
   // top-to-bottom). Each <text> element gets a matching local
   // transposition around its anchor so labels render horizontally.
   const isVertical = model.orientation === "vertical";
+  // In vertical orientation we render the title OUTSIDE the
+  // transposition group so it appears at the TOP centre of the final
+  // SVG (rather than rotated onto the left edge). The transposed
+  // content is pushed DOWN by vertTopOffset to make room for the
+  // title strip.
+  const vertTopOffset = isVertical ? TITLE_H : 0;
   const svgW = isVertical ? totalH : totalW;
-  const svgH = isVertical ? totalW : totalH;
+  const svgH = isVertical ? totalW + vertTopOffset : totalH;
   const tx = (x, y) => isVertical
     ? ` transform="matrix(0 1 1 0 ${x - y} ${y - x})"`
     : "";
@@ -1344,20 +1422,26 @@ function render(model) {
     </marker>
   </defs>`);
 
-  if (isVertical) {
-    // Rotate the rendered diagram 90° clockwise around the origin and
-    // translate so it lands in positive coordinate space.
-    // Transpose: (x, y) → (y, x). This puts the original top edge on
-    // the LEFT in the final SVG, so lane 0 (declared first) ends up on
-    // the left, and the original left-to-right time axis becomes
-    // top-to-bottom.
-    parts.push(`<g transform="matrix(0 1 1 0 0 0)">`);
+  if (model.title && isVertical) {
+    // Render title OUTSIDE the transposition group, at the top centre
+    // of the final vertical SVG.
+    const titleX = svgW / 2;
+    const titleY = L.PAD_T_TOP + 26;
+    parts.push(`<text x="${titleX}" y="${titleY}" text-anchor="middle" font-size="18" font-weight="600" fill="#111827">${escXml(model.title)}</text>`);
   }
 
-  if (model.title) {
+  if (isVertical) {
+    // Transpose: (x, y) → (y, x). Lane 0 (declared first) ends up on
+    // the LEFT in the final SVG and time runs top-to-bottom.
+    // Then translate down by vertTopOffset so the transposed content
+    // sits below the title strip.
+    parts.push(`<g transform="translate(0 ${vertTopOffset}) matrix(0 1 1 0 0 0)">`);
+  }
+
+  if (model.title && !isVertical) {
     const titleX = totalW / 2;
     const titleY = L.PAD_T_TOP + 26;
-    parts.push(`<text x="${titleX}" y="${titleY}" text-anchor="middle" font-size="18" font-weight="600" fill="#111827"${tx(titleX, titleY)}>${escXml(model.title)}</text>`);
+    parts.push(`<text x="${titleX}" y="${titleY}" text-anchor="middle" font-size="18" font-weight="600" fill="#111827">${escXml(model.title)}</text>`);
   }
 
   if (hasSections) {
@@ -1371,8 +1455,9 @@ function render(model) {
       const w = x2 - x1;
       const labelX = (x1 + x2) / 2;
       const labelY = bannerY + 15;
-      parts.push(`<rect x="${x1}" y="${bannerY}" width="${w}" height="22" rx="6" ry="6" fill="#eff6ff" stroke="#bfdbfe"/>`);
-      parts.push(`<text x="${labelX}" y="${labelY}" text-anchor="middle" font-size="12" font-weight="600" fill="#1d4ed8"${tx(labelX, labelY)}>${escXml(s.label)}</text>`);
+      const sLine = (typeof s.lineNo === "number") ? ` data-line="${s.lineNo}"` : "";
+      parts.push(`<rect x="${x1}" y="${bannerY}" width="${w}" height="22" rx="6" ry="6" fill="#eff6ff" stroke="#bfdbfe"${sLine}/>`);
+      parts.push(`<text x="${labelX}" y="${labelY}" text-anchor="middle" font-size="12" font-weight="600" fill="#1d4ed8"${tx(labelX, labelY)}${sLine}>${escXml(s.label)}</text>`);
       parts.push(`<line x1="${x1}" y1="${TOP_OF_LANES - 2}" x2="${x1}" y2="${totalH - PAD_B + 4}" stroke="#dbeafe" stroke-dasharray="3 4" stroke-width="1"/>`);
       parts.push(`<line x1="${x2}" y1="${TOP_OF_LANES - 2}" x2="${x2}" y2="${totalH - PAD_B + 4}" stroke="#dbeafe" stroke-dasharray="3 4" stroke-width="1"/>`);
     }
@@ -1438,6 +1523,7 @@ function render(model) {
         arrowLabel: ev.arrowLabel || null,
         labelSide: ev.labelSide || null,
         arrowLabelCenterY: labelCenterY,
+        lineNo: ev.lineNo,
       });
       firstActivityMarked = true;
     } else if (ev.type === "note") {
@@ -1458,6 +1544,7 @@ function render(model) {
         h: bottom - top,
         lines,
         type: "note",
+        lineNo: ev.lineNo,
       });
     }
   });
@@ -1473,6 +1560,10 @@ function render(model) {
     parts.push(`<text x="${fn.cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-size="11" fill="#78350f"${tx(fn.cx, cy)}>${tspans}</text>`);
   });
 
+  // Helper: emit a data-line attribute when lineNo is set, so the
+  // shape can be matched up with its statement in the source pane.
+  const dl = ln => (typeof ln === "number") ? ` data-line="${ln}"` : "";
+
   // Render arrow segments precomputed by the solver, then self-loops, all
   // behind the box rectangles so the boxes draw on top.
   // Blue within-lane flow arrows (drawn behind boxes and message arrows).
@@ -1487,22 +1578,23 @@ function render(model) {
   boxes.forEach(box => {
     if (box.type !== "activity") return;
     const dash = box.dashed ? ' stroke-dasharray="6 4"' : "";
+    const ln = dl(box.lineNo);
     if (box.arrowPath && box.arrowPath.length >= 2) {
       const d = polylineToPath(box.arrowPath);
-      parts.push(`<path d="${d}" fill="none" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"${dash}/>`);
+      parts.push(`<path d="${d}" fill="none" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"${dash}${ln}/>`);
     }
     if (box.arrowPathIn && box.arrowPathIn.length >= 2) {
       const d = polylineToPath(box.arrowPathIn);
-      parts.push(`<path d="${d}" fill="none" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"/>`);
+      parts.push(`<path d="${d}" fill="none" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"${ln}/>`);
     }
     if (box.arrowLabel) {
       // The caption attaches to the FORWARD arrow when one exists (-> and
       // <->). When only an incoming arrow exists (the <: form), the
       // caption goes on it instead.
       if (box.arrowPath) {
-        parts.push(arrowLabelSvg(box.arrowPath, box.arrowLabel, box.labelSide, box.arrowLabelCenterY, isVertical));
+        parts.push(arrowLabelSvg(box.arrowPath, box.arrowLabel, box.labelSide, box.arrowLabelCenterY, isVertical, box.lineNo));
       } else if (box.arrowPathIn) {
-        parts.push(arrowLabelSvg(box.arrowPathIn, box.arrowLabel, null, null, isVertical));
+        parts.push(arrowLabelSvg(box.arrowPathIn, box.arrowLabel, null, null, isVertical, box.lineNo));
       }
     }
     if (box.selfLoop) {
@@ -1516,7 +1608,7 @@ function render(model) {
         { x: x2, y: yArc },
         { x: x2, y: yTop },
       ]);
-      parts.push(`<path d="${d}" fill="none" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"${dash}/>`);
+      parts.push(`<path d="${d}" fill="none" stroke="#374151" stroke-width="1.5" marker-end="url(#ah)"${dash}${ln}/>`);
     }
   });
 
@@ -1528,16 +1620,17 @@ function render(model) {
   boxes.forEach(box => {
     const x = box.cx - box.w / 2;
     const y = box.cy - box.h / 2;
+    const ln = dl(box.lineNo);
     if (box.type === "activity") {
       const strokeWidth = box.isFirst ? 2.5 : 1.25;
-      parts.push(`<rect x="${x}" y="${y}" width="${box.w}" height="${box.h}" rx="6" ry="6" fill="#dbeafe" stroke="#3b82f6" stroke-width="${strokeWidth}"/>`);
+      parts.push(`<rect x="${x}" y="${y}" width="${box.w}" height="${box.h}" rx="6" ry="6" fill="#dbeafe" stroke="#3b82f6" stroke-width="${strokeWidth}"${ln}/>`);
     } else if (box.type === "note") {
-      parts.push(`<rect x="${x}" y="${y}" width="${box.w}" height="${box.h}" rx="6" ry="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.1"/>`);
+      parts.push(`<rect x="${x}" y="${y}" width="${box.w}" height="${box.h}" rx="6" ry="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.1"${ln}/>`);
     }
     const startDy = -(box.lines.length - 1) * L.TEXT_LINE_H / 2;
-    const tspans = box.lines.map((ln, i) => `<tspan x="${box.cx}" dy="${i === 0 ? startDy : L.TEXT_LINE_H}">${escXml(ln)}</tspan>`).join("");
+    const tspans = box.lines.map((ln2, i) => `<tspan x="${box.cx}" dy="${i === 0 ? startDy : L.TEXT_LINE_H}">${escXml(ln2)}</tspan>`).join("");
     const fill = box.type === "note" ? "#78350f" : "#1e3a8a";
-    parts.push(`<text x="${box.cx}" y="${box.cy}" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="${fill}" font-weight="500"${tx(box.cx, box.cy)}>${tspans}</text>`);
+    parts.push(`<text x="${box.cx}" y="${box.cy}" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="${fill}" font-weight="500"${tx(box.cx, box.cy)}${ln}>${tspans}</text>`);
   });
 
   if (isVertical) {
@@ -1548,7 +1641,7 @@ function render(model) {
     // The lane's final centre x is the same value as the lane's
     // centre y in the horizontal frame (because the parent transform
     // swaps x and y).
-    const captionStripFinalCenterY = L.PAD_L + captionW / 2;
+    const captionStripFinalCenterY = vertTopOffset + L.PAD_L + captionW / 2;
     const captionFontSize = 14;
     const capLineH = 16;
     const maxLineWidthPx = Math.max(40, laneH - 24);
@@ -1653,7 +1746,7 @@ function polylineToPath(points, radius = 8) {
 // to the side of the longest segment (right by default, or left/right
 // when explicitly forced — used when a box has both an outgoing and an
 // incoming arrow that would otherwise overlap).
-function arrowLabelSvg(arrowPath, label, side, centerY, isVertical) {
+function arrowLabelSvg(arrowPath, label, side, centerY, isVertical, lineNo) {
   if (!label || !arrowPath || arrowPath.length < 2) return "";
   let bestI = 0, bestLen = 0;
   for (let i = 0; i < arrowPath.length - 1; i++) {
@@ -1738,7 +1831,8 @@ function arrowLabelSvg(arrowPath, label, side, centerY, isVertical) {
   // Match the diagram's parent transposition with a local counter-
   // transposition around the text's anchor so the label reads normally.
   const xform = isVertical ? ` transform="matrix(0 1 1 0 ${x - y} ${y - x})"` : "";
-  return `<text x="${x}" y="${y}" text-anchor="${anchor}" dominant-baseline="${baseline}" font-size="${fontSize}" fill="#475569" font-style="italic"${xform}>${tspans}</text>`;
+  const lineAttr = (typeof lineNo === "number") ? ` data-line="${lineNo}"` : "";
+  return `<text x="${x}" y="${y}" text-anchor="${anchor}" dominant-baseline="${baseline}" font-size="${fontSize}" fill="#475569" font-style="italic"${xform}${lineAttr}>${tspans}</text>`;
 }
 
 function wrap(text, maxChars) {
@@ -1804,9 +1898,10 @@ function doRender() {
     sizeInfo.textContent = `${svg.getAttribute("width")} × ${svg.getAttribute("height")}`;
   }
   applyZoom();
+  refreshSourceHighlight();
   status.textContent = model.errors.length
     ? `${model.errors.length} parse warning${model.errors.length === 1 ? "" : "s"}`
-    : `${model.lanes.length} lane${model.lanes.length === 1 ? "" : "s"}, ${model.events.length} event${model.events.length === 1 ? "" : "s"}`;
+    : "";
   if (model.errors.length) {
     const warn = document.createElement("div");
     warn.className = "error";
@@ -1815,7 +1910,164 @@ function doRender() {
   }
 }
 
+// ---------- two-way highlight ----------
+// Each diagram shape carries data-line. Clicking a shape selects its
+// source line in the editor; moving the editor caret onto a line lights
+// up all matching shapes. Selecting a range never highlights.
+function clearDiagramHighlight() {
+  diagram.querySelectorAll("svg [data-line].source-active").forEach(el => el.classList.remove("source-active"));
+}
+function highlightDiagramLine(lineNo) {
+  clearDiagramHighlight();
+  if (typeof lineNo !== "number" || lineNo < 0) return;
+  diagram.querySelectorAll(`svg [data-line="${lineNo}"]`).forEach(el => el.classList.add("source-active"));
+}
+function currentEditorLine() {
+  // Use caret position when there's no range selection.
+  const a = editor.selectionStart;
+  const b = editor.selectionEnd;
+  if (a !== b) return -1;
+  const upto = editor.value.slice(0, a);
+  return upto.split("\n").length - 1;
+}
+function refreshSourceHighlight() {
+  if (document.activeElement !== editor) {
+    clearDiagramHighlight();
+    return;
+  }
+  highlightDiagramLine(currentEditorLine());
+}
+
+editor.addEventListener("click", refreshSourceHighlight);
+editor.addEventListener("keyup", refreshSourceHighlight);
+editor.addEventListener("focus", refreshSourceHighlight);
+editor.addEventListener("blur", clearDiagramHighlight);
+
+diagram.addEventListener("click", e => {
+  const el = e.target && e.target.closest && e.target.closest("[data-line]");
+  if (!el) return;
+  const ln = parseInt(el.getAttribute("data-line"), 10);
+  if (!Number.isFinite(ln) || ln < 0) return;
+  // Compute start/end offsets for this source line.
+  const src = editor.value;
+  let start = 0;
+  for (let i = 0; i < ln; i++) {
+    const nl = src.indexOf("\n", start);
+    if (nl === -1) { start = src.length; break; }
+    start = nl + 1;
+  }
+  const nl = src.indexOf("\n", start);
+  const end = nl === -1 ? src.length : nl;
+  editor.focus();
+  editor.setSelectionRange(start, end);
+  highlightDiagramLine(ln);
+});
+
 editor.addEventListener("input", scheduleRender);
+
+// ---------- source syntax highlighting ----------
+// We render a colourised copy of the source into #editor-highlight,
+// which sits behind the textarea (which has transparent text but a
+// visible caret). Scrolling stays in sync.
+const editorHighlight = document.getElementById("editor-highlight");
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+function highlightCaption(text) {
+  const m = String(text).match(/^(.*?)(\s*)(<[^<>]+>)(\s*)$/);
+  if (m) {
+    return `<span class="hl-caption">${escHtml(m[1])}</span>${escHtml(m[2])}` +
+      `<span class="hl-arrow-label">${escHtml(m[3])}</span>${escHtml(m[4])}`;
+  }
+  return `<span class="hl-caption">${escHtml(text)}</span>`;
+}
+function highlightLanesList(text) {
+  // Comma-separated list of lane names with operator commas between.
+  return text.split(",").map(part => {
+    const lp = part.match(/^(\s*)(.*?)(\s*)$/);
+    return escHtml(lp[1]) + `<span class="hl-lane">${escHtml(lp[2])}</span>` + escHtml(lp[3]);
+  }).join('<span class="hl-op">,</span>');
+}
+function highlightLine(line) {
+  if (/^\s*(?:#|\/\/)/.test(line)) {
+    return `<span class="hl-comment">${escHtml(line)}</span>`;
+  }
+  if (!line.trim()) return escHtml(line);
+
+  const leading = line.match(/^\s*/)[0];
+  const body = line.slice(leading.length);
+  const pre = escHtml(leading);
+  let m;
+
+  // title: ...
+  if ((m = body.match(/^(title)(\s*:\s*)(.*)$/i))) {
+    return pre +
+      `<span class="hl-directive">${escHtml(m[1])}</span>` +
+      `<span class="hl-op">${escHtml(m[2])}</span>` +
+      `<span class="hl-caption">${escHtml(m[3])}</span>`;
+  }
+  // order: lane, lane, ...
+  if ((m = body.match(/^(order)(\s*:\s*)(.*)$/i))) {
+    return pre +
+      `<span class="hl-directive">${escHtml(m[1])}</span>` +
+      `<span class="hl-op">${escHtml(m[2])}</span>` +
+      highlightLanesList(m[3]);
+  }
+  // [ Section name ]
+  if ((m = body.match(/^(\[)(\s*)(.+?)(\s*)(\])(\s*)$/))) {
+    return pre +
+      `<span class="hl-op">${escHtml(m[1])}</span>` + escHtml(m[2]) +
+      `<span class="hl-section">${escHtml(m[3])}</span>` + escHtml(m[4]) +
+      `<span class="hl-op">${escHtml(m[5])}</span>` + escHtml(m[6]);
+  }
+  // note Lane: text  /  note L1, L2: text
+  if ((m = body.match(/^(note)(\s+)([^:]+?)(\s*:\s*)(.*)$/i))) {
+    return pre +
+      `<span class="hl-directive">${escHtml(m[1])}</span>` + escHtml(m[2]) +
+      highlightLanesList(m[3]) +
+      `<span class="hl-op">${escHtml(m[4])}</span>` +
+      highlightCaption(m[5]);
+  }
+  // arrow: from OP to: caption
+  if ((m = body.match(/^(.+?)(\s*)(<-{1,2}>|<-{1,2}|>-{1,2}>|-{1,2}>)(\s*)(.+?)(\s*:\s*)(.*)$/))) {
+    return pre +
+      `<span class="hl-lane">${escHtml(m[1])}</span>` + escHtml(m[2]) +
+      `<span class="hl-op">${escHtml(m[3])}</span>` + escHtml(m[4]) +
+      `<span class="hl-lane">${escHtml(m[5])}</span>` +
+      `<span class="hl-op">${escHtml(m[6])}</span>` +
+      highlightCaption(m[7]);
+  }
+  // Lane <: caption (backward-only)
+  if ((m = body.match(/^([^<:]+?)(\s*<:\s*)(.+)$/))) {
+    return pre +
+      `<span class="hl-lane">${escHtml(m[1])}</span>` +
+      `<span class="hl-op">${escHtml(m[2])}</span>` +
+      highlightCaption(m[3]);
+  }
+  // Lane: caption (standalone)
+  if ((m = body.match(/^([^:]+?)(\s*:\s*)(.+)$/))) {
+    return pre +
+      `<span class="hl-lane">${escHtml(m[1])}</span>` +
+      `<span class="hl-op">${escHtml(m[2])}</span>` +
+      highlightCaption(m[3]);
+  }
+  return escHtml(line);
+}
+function updateSourceHighlight() {
+  // Trailing newline keeps overlay height matching textarea when the
+  // source ends with a blank line / pending Enter.
+  editorHighlight.innerHTML = editor.value.split("\n").map(highlightLine).join("\n") + "\n";
+  editorHighlight.scrollTop = editor.scrollTop;
+  editorHighlight.scrollLeft = editor.scrollLeft;
+}
+editor.addEventListener("input", updateSourceHighlight);
+editor.addEventListener("scroll", () => {
+  editorHighlight.scrollTop = editor.scrollTop;
+  editorHighlight.scrollLeft = editor.scrollLeft;
+});
 
 // ---------- zoom ----------
 // The diagram is an SVG with explicit width/height attributes. Zoom
@@ -1933,7 +2185,7 @@ document.getElementById("zoom-fit").addEventListener("click", () => {
 diagramWrap.addEventListener("wheel", e => {
   if (!(e.ctrlKey || e.metaKey)) return;
   e.preventDefault();
-  const factor = Math.exp(-e.deltaY * 0.003);
+  const factor = Math.exp(-e.deltaY * 0.00375);
   zoomAt(currentZoom * factor, e.clientX, e.clientY);
 }, { passive: false });
 
@@ -1982,11 +2234,31 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !helpModal.hidden) closeHelp();
 });
 
-document.getElementById("copy-source").addEventListener("click", async () => {
+// Briefly swap a button's label and add a success/failure colour class.
+// Restores the original label after ~1100 ms (only if it hasn't been
+// changed again in the meantime).
+function flashButton(button, label, ok = true) {
+  if (!button) return;
+  const cls = ok ? "flash-ok" : "flash-err";
+  const orig = button.textContent;
+  button.textContent = label;
+  button.classList.add(cls);
+  setTimeout(() => {
+    if (button.textContent === label) {
+      button.textContent = orig;
+      button.classList.remove(cls);
+    }
+  }, 1100);
+}
+
+document.getElementById("copy-source").addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
   try {
     await navigator.clipboard.writeText(editor.value);
+    flashButton(btn, "Copied!", true);
     flashStatus("Copied source");
-  } catch (e) {
+  } catch (err) {
+    flashButton(btn, "Copy failed", false);
     flashStatus("Copy failed");
   }
 });
@@ -2056,28 +2328,35 @@ document.getElementById("download-png").addEventListener("click", async () => {
   }
 });
 
-document.getElementById("copy-svg").addEventListener("click", async () => {
+document.getElementById("copy-svg").addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
   const xml = currentSvgXml();
   if (!xml) return;
   try {
     await navigator.clipboard.writeText(xml);
+    flashButton(btn, "Copied!", true);
     flashStatus("Copied SVG");
-  } catch (e) {
+  } catch (err) {
+    flashButton(btn, "Copy failed", false);
     flashStatus("Copy failed");
   }
 });
 
-document.getElementById("copy-png").addEventListener("click", async () => {
+document.getElementById("copy-png").addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
   try {
     const blob = await currentPngBlob();
     if (!blob) return;
     if (!navigator.clipboard || !window.ClipboardItem) {
+      flashButton(btn, "Not supported", false);
       flashStatus("PNG clipboard not supported");
       return;
     }
     await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    flashButton(btn, "Copied!", true);
     flashStatus("Copied PNG");
-  } catch (e) {
+  } catch (err) {
+    flashButton(btn, "Copy failed", false);
     flashStatus("Copy PNG failed");
   }
 });
@@ -2317,6 +2596,7 @@ window.addEventListener("beforeunload", e => {
 
 // initial load
 editor.value = savedSource != null ? savedSource : "";
+updateSourceHighlight();
 doRender();
 </script>
 </body>
