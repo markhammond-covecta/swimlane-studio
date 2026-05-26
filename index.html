@@ -65,7 +65,7 @@
     color: var(--ink-soft);
   }
   header .actions { display: flex; gap: 8px; }
-  header button, header select {
+  header button, header select, .source-actions button {
     font-family: var(--sans);
     font-size: 13px;
     padding: 6px 12px;
@@ -76,7 +76,7 @@
     cursor: pointer;
     transition: background 0.12s, border-color 0.12s;
   }
-  header button:hover, header select:hover {
+  header button:hover, header select:hover, .source-actions button:hover {
     background: #f3f4f6;
     border-color: #c8ccd2;
   }
@@ -144,6 +144,45 @@
     justify-content: space-between;
   }
 
+  .zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: normal;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .zoom-controls button {
+    font-family: var(--sans);
+    font-size: 13px;
+    padding: 3px 8px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    border-radius: 4px;
+    cursor: pointer;
+    line-height: 1.2;
+    min-width: 26px;
+  }
+  .zoom-controls button:hover {
+    background: #f3f4f6;
+    border-color: #c8ccd2;
+  }
+  .zoom-level {
+    display: inline-block;
+    min-width: 44px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+  #size-info {
+    margin-left: 8px;
+    font-weight: normal;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
   #editor {
     flex: 1 1 auto;
     width: 100%;
@@ -192,23 +231,93 @@
     white-space: pre-wrap;
   }
 
-  footer {
+  .source-actions {
     flex: 0 0 auto;
-    padding: 8px 20px;
-    font-size: 12px;
-    color: var(--ink-soft);
-    border-top: 1px solid var(--line);
-    background: var(--panel);
+    padding: 10px 14px;
+    border-top: 1px solid var(--line-soft);
+    background: #fbfcfd;
     display: flex;
-    justify-content: space-between;
-    gap: 16px;
+    gap: 8px;
+    justify-content: flex-end;
   }
-  footer code {
-    font-family: var(--mono);
-    font-size: 11.5px;
+
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.4);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .modal-backdrop[hidden] { display: none; }
+  .modal {
+    background: var(--panel);
+    border-radius: 10px;
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+    max-width: 760px;
+    max-height: 80vh;
+    width: 100%;
+    overflow: auto;
+    padding: 26px 30px 30px;
+    position: relative;
+  }
+  .modal-close {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    background: none;
+    border: none;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--ink-soft);
+    padding: 4px 10px;
+    border-radius: 6px;
+  }
+  .modal-close:hover {
     background: #f3f4f6;
-    padding: 1px 5px;
+    color: var(--ink);
+  }
+  .modal h2 {
+    margin: 0 0 6px;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .modal h3 {
+    margin: 20px 0 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .modal table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .modal td {
+    padding: 5px 14px 5px 0;
+    vertical-align: top;
+    color: var(--ink-soft);
+  }
+  .modal td:first-child {
+    white-space: nowrap;
+    width: 1%;
+    padding-right: 18px;
+  }
+  .modal code {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: #f3f4f6;
+    padding: 2px 6px;
     border-radius: 4px;
+    color: var(--ink);
+    white-space: nowrap;
   }
 
   @media (max-width: 820px) {
@@ -226,16 +335,9 @@
   <header>
     <div class="brand">
       <h1>Swimlane Studio</h1>
-      <span class="tag">Horizontal swimlane diagrams &middot; swimlane syntax</span>
     </div>
     <div class="actions">
-      <select id="sample-picker" aria-label="Load example">
-        <option value="">Examples&hellip;</option>
-        <option value="order">Order processing</option>
-        <option value="auth">OAuth flow</option>
-        <option value="incident">Incident response</option>
-        <option value="minimal">Minimal</option>
-      </select>
+      <button id="help-button" title="Show syntax help">Help</button>
       <button id="copy-source">Copy source</button>
       <button id="copy-svg">Copy SVG</button>
       <button id="copy-png">Copy PNG</button>
@@ -251,110 +353,75 @@
         <span id="status"></span>
       </div>
       <textarea id="editor" spellcheck="false" autocomplete="off"></textarea>
+      <div class="source-actions">
+        <button id="new-button" title="Start a new diagram">New</button>
+        <button id="load-button" title="Load a .txt file">Load</button>
+        <button id="save-button" title="Save the current diagram source to a .txt file">Save</button>
+      </div>
     </section>
     <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" aria-label="Resize panes" tabindex="0"></div>
     <section class="pane">
       <div class="pane-header">
         <span>Diagram</span>
-        <span id="size-info"></span>
+        <span class="zoom-controls">
+          <button id="zoom-out" aria-label="Zoom out" title="Zoom out">&minus;</button>
+          <span class="zoom-level" id="zoom-level">100%</span>
+          <button id="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
+          <button id="zoom-fit" title="Zoom to fit diagram">Fit</button>
+          <button id="zoom-reset" title="Reset zoom">Reset</button>
+          <span id="size-info"></span>
+        </span>
       </div>
       <div id="diagram-wrap"><div id="diagram"></div></div>
     </section>
   </main>
 
-  <footer>
-    <span>
-      Syntax: <code>A -&gt; B: msg</code> <code>A --&gt; B: msg</code>
-      <code>note A: text</code> <code>note A, B: text</code>
-      <code>[ Section ]</code> <code>title:</code> <code>order:</code>
-    </span>
-    <span>Use <code>\n</code> in labels for line breaks &middot; <code>#</code> or <code>//</code> for comments</span>
-  </footer>
+  <div class="modal-backdrop" id="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-title" hidden>
+    <div class="modal" role="document">
+      <button class="modal-close" id="help-close" aria-label="Close help" title="Close (Esc)">&times;</button>
+      <h2 id="help-title">Swimlane syntax</h2>
+
+      <h3>Messages</h3>
+      <table>
+        <tr><td><code>A -&gt; B: msg</code></td><td>Forward message. The activity box sits in lane A; the arrow lands on lane B.</td></tr>
+        <tr><td><code>A --&gt; B: msg</code></td><td>Forward message, drawn dashed (typically a response).</td></tr>
+        <tr><td><code>A &lt;- B: msg</code></td><td>Reversed: B sends to A. Equivalent to <code>B -&gt; A: msg</code>.</td></tr>
+        <tr><td><code>A &lt;-&gt; B: msg</code></td><td>Bidirectional same-lane link. Adds a forward trail to the next same-lane box and a backward trail from the previous same-lane box.</td></tr>
+        <tr><td><code>B &gt;-&gt; A: msg</code></td><td>Force the shared-column counter-pair rendering when responding to the immediately previous message (otherwise the chain breaks and B's reply goes in a new column).</td></tr>
+        <tr><td><code>A &lt;: text</code></td><td>Backward-only box: a labelled box in lane A with just an incoming trail from the previous same-lane box.</td></tr>
+        <tr><td><code>A: text</code></td><td>Standalone box: a labelled box in lane A with no arrows of its own. A preceding cross-lane arrow will still land on it.</td></tr>
+        <tr><td><code>A -&gt; A: text</code></td><td>Same-lane forward link. The box sits in lane A and a horizontal arrow trails to the next same-lane box.</td></tr>
+      </table>
+
+      <h3>Notes</h3>
+      <table>
+        <tr><td><code>note A: text</code></td><td>Yellow note in lane A.</td></tr>
+        <tr><td><code>note A, B: text</code></td><td>Note spanning lanes A and B (and any lanes in between).</td></tr>
+      </table>
+
+      <h3>Layout</h3>
+      <table>
+        <tr><td><code>title: ...</code></td><td>Diagram title, rendered above the lanes.</td></tr>
+        <tr><td><code>order: A, B, C</code></td><td>Explicit lane order (top to bottom). Any lanes referenced but not listed are appended in first-seen order.</td></tr>
+        <tr><td><code>[ Section ]</code></td><td>Banner spanning the columns of the following events, up to the next section or end of diagram.</td></tr>
+      </table>
+
+      <h3>Captions and labels</h3>
+      <table>
+        <tr><td><code>caption \n more</code></td><td>Line break inside a box caption or arrow label.</td></tr>
+        <tr><td><code>caption &lt;arrow label&gt;</code></td><td>Trailing <code>&lt;...&gt;</code> becomes the arrow's italic side-label; the rest stays in the box.</td></tr>
+      </table>
+
+      <h3>Comments</h3>
+      <table>
+        <tr><td><code># comment</code></td><td>Line comment.</td></tr>
+        <tr><td><code>// comment</code></td><td>Line comment.</td></tr>
+      </table>
+    </div>
+  </div>
 
 <script>
 "use strict";
-
-// ---------- samples ----------
-const SAMPLES = {
-  order: `title: Order processing
-
-order: Customer, Storefront, API, Inventory, Payment
-
-Customer -> Storefront: Place order
-Storefront -> API: POST /orders
-API -> Inventory: Reserve stock
-Inventory --> API: reservation_id
-API -> Payment: Charge card
-Payment --> API: txn_id
-API --> Storefront: 201 Created
-Storefront --> Customer: Order confirmation
-
-[ Async fulfilment ]
-
-API -> Inventory: Commit reservation
-note API, Inventory: Eventual consistency\\nwindow ~2s
-API -> Customer: Email receipt
-`,
-
-  auth: `title: OAuth 2.0 authorization code flow
-
-order: User, App, Browser, AuthServer, Resource
-
-User -> App: Click "Sign in"
-App -> Browser: Redirect to /authorize
-Browser -> AuthServer: GET /authorize
-AuthServer --> Browser: Login page
-User -> Browser: Submit credentials
-Browser -> AuthServer: POST credentials
-AuthServer --> Browser: Redirect with code
-
-[ Token exchange ]
-
-Browser -> App: GET /callback?code=...
-App -> AuthServer: POST /token (code)
-AuthServer --> App: access_token, refresh_token
-note App: Persist tokens\\nin session store
-
-[ Resource access ]
-
-App -> Resource: GET /me (Bearer)
-Resource --> App: profile JSON
-App --> User: Welcome page
-`,
-
-  incident: `title: Incident response
-
-order: Alert, OnCall, Bridge, Engineer, Comms
-
-Alert -> OnCall: Pager fires
-OnCall -> Bridge: Open conference
-OnCall -> Engineer: Page primary
-Engineer -> Bridge: Join, take IC role
-
-[ Triage ]
-
-Engineer -> Engineer: Inspect dashboards
-note Engineer: Check error rates,\\nsaturation, recent deploys
-Engineer --> OnCall: Confirm severity
-
-[ Communication ]
-
-OnCall -> Comms: Post status page update
-Comms --> OnCall: Acknowledged
-
-[ Recovery ]
-
-Engineer -> Engineer: Apply rollback
-Engineer --> OnCall: Service restored
-OnCall -> Comms: Post resolution
-`,
-
-  minimal: `title: Hello
-
-Alice -> Bob: Hi
-Bob --> Alice: Hey
-`,
-};
 
 // ---------- parser ----------
 function parse(source) {
@@ -365,7 +432,7 @@ function parse(source) {
   let explicitOrder = null;
   const errors = [];
 
-  const arrowRe = /^(.+?)\s*(<-{1,2}>|<-{1,2}|-{1,2}>)\s*(.+?)(?::\s*(.*))?$/;
+  const arrowRe = /^(.+?)\s*(<-{1,2}>|<-{1,2}|>-{1,2}>|-{1,2}>)\s*(.+?)(?::\s*(.*))?$/;
   const noteRe = /^note\b(?:\s+([^:]+?))?\s*:\s*(.*)$/i;
   const sectionRe = /^\[\s*(.+?)\s*\]$/;
   const titleRe = /^title\s*:\s*(.*)$/i;
@@ -406,6 +473,12 @@ function parse(source) {
       //           (to the next same-lane box) and a backward link (from
       //           the previous same-lane box).
       // <-, <-- : reversed (B sends to A).
+      // >->, >-->: counter-back forward link. Same as -> / --> but when
+      //           the previous message ran in the opposite direction
+      //           (A -> B then B >-> A), the two messages share a column
+      //           and render as a side-by-side counter-pair. Without
+      //           >->, B -> A immediately after A -> B breaks the chain
+      //           and starts a new column.
       // Trailing "<label>" in the text becomes the arrow's caption.
       if (/^<-{1,2}>$/.test(arrow)) {
         const dashed = arrow.includes("--");
@@ -414,12 +487,13 @@ function parse(source) {
         events.push({ type: "message", from, to, text, dashed, bidirectional: true, arrowLabel });
         continue;
       }
+      const counter = /^>-{1,2}>$/.test(arrow);
       const reversed = arrow.startsWith("<");
       const dashed = arrow.includes("--");
       if (reversed) [from, to] = [to, from];
       lanesSeen.add(from);
       lanesSeen.add(to);
-      events.push({ type: "message", from, to, text, dashed, arrowLabel });
+      events.push({ type: "message", from, to, text, dashed, arrowLabel, counter });
       continue;
     }
 
@@ -546,21 +620,55 @@ const LAYOUT = {
   LANE_START_OFFSET: 8,
   LANE_END_PAD: 32,
   SELF_LOOP_HEIGHT: 18,
+  // Arrow caption wrap widths (chars per line). Captions longer than
+  // HLABEL_MAX_CHARS wrap; the solver extends the inter-column gap so
+  // the longest line still fits.
+  HLABEL_MAX_CHARS: 22,
+  VLABEL_MAX_CHARS: 14,
+  LABEL_CHAR_PX: 6.2,      // estimated px per char for italic 11px sans
+  LABEL_H_PADDING: 24,     // breathing room around a horizontal caption
 };
 
+// Returns colX(c), laneY(i), laneCY(i), and the top-of-lanes y.
+// colX consults model.colCenters when populated (variable widths for
+// long horizontal captions); falls back to uniform COL_W spacing
+// otherwise. Phase 1 runs with the uniform fallback; Phase 1.5 sets
+// colCenters before Phase 2 uses it.
 function layoutMetrics(model) {
   const L = LAYOUT;
   const titleH = model.title ? L.TITLE_H_WHEN_PRESENT : 0;
   const sectionH = model.sections.length > 0 ? L.SECTION_H_WHEN_PRESENT : 0;
   const topOfLanes = L.PAD_T_TOP + titleH + sectionH;
+  const captionW = (typeof model.captionW === "number") ? model.captionW : L.CAPTION_W;
+  const colX = c => {
+    const cc = model.colCenters;
+    if (cc && c < cc.length) return cc[c];
+    if (cc && cc.length > 0) {
+      const last = cc.length - 1;
+      return cc[last] + (c - last) * L.COL_W;
+    }
+    return L.PAD_L + captionW + c * L.COL_W + L.COL_W / 2;
+  };
   return {
-    colX: c => L.PAD_L + L.CAPTION_W + c * L.COL_W + L.COL_W / 2,
+    colX,
     laneY: i => topOfLanes + i * (L.LANE_H + L.LANE_GAP),
     laneCY: i => topOfLanes + i * (L.LANE_H + L.LANE_GAP) + L.LANE_H / 2,
-    laneStartX: L.PAD_L + L.CAPTION_W + L.LANE_START_OFFSET,
+    laneStartX: L.PAD_L + captionW + L.LANE_START_OFFSET,
     topOfLanes,
   };
 }
+
+// Cached canvas context for accurate text measurement. Falls back to a
+// char-count estimate when DOM is unavailable.
+const _measureCanvas = (typeof document !== "undefined") ? document.createElement("canvas") : null;
+const _measureCtx = _measureCanvas ? _measureCanvas.getContext("2d") : null;
+function measureTextPx(text, font) {
+  if (!_measureCtx) return String(text).length * LAYOUT.LABEL_CHAR_PX;
+  _measureCtx.font = font;
+  return _measureCtx.measureText(String(text)).width;
+}
+const ARROW_LABEL_FONT = 'italic 11px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+const LANE_CAPTION_FONT = '600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
 
 function boxHeightFor(text) {
   const L = LAYOUT;
@@ -570,6 +678,23 @@ function boxHeightFor(text) {
 
 function solveLayout(model) {
   const L = LAYOUT;
+
+  // Compute an effective caption width per diagram from the longest
+  // lane name (accounting for explicit \n line breaks). Captions render
+  // 14px sans bold; we reserve 18px of left and right padding inside
+  // the caption strip so the longest line never bleeds into the first
+  // box column. Defaults to L.CAPTION_W when no lane name exceeds it.
+  const CAPTION_LEFT_PAD = 18;
+  const CAPTION_RIGHT_PAD = 18;
+  let captionW = L.CAPTION_W;
+  for (const lane of model.lanes) {
+    for (const ln of String(lane).split("\n")) {
+      const px = measureTextPx(ln, LANE_CAPTION_FONT) + CAPTION_LEFT_PAD + CAPTION_RIGHT_PAD;
+      if (px > captionW) captionW = px;
+    }
+  }
+  model.captionW = captionW;
+
   const M = layoutMetrics(model);
   const laneIdx = new Map(model.lanes.map((l, i) => [l, i]));
 
@@ -622,8 +747,16 @@ function solveLayout(model) {
   // the next, connected by a vertical arrow.
   //
   // When the chain breaks (or after a note), a new column starts.
+  //
+  // Exception: when the chain would CONTINUE but the new message also
+  // flips back (current source = prev destination AND current
+  // destination = prev source — i.e., A -> B then B -> A), the chain
+  // is BROKEN by default so B's reply box lands in a new column rather
+  // than routing back to A's originating box. The `>->` / `>-->` arrow
+  // syntax opts back into the old shared-column counter-pair rendering.
   let lastStmtCol = -1;
   let prevDestI = -1;
+  let prevSrcI = -1;
 
   for (const ev of model.events) {
     if (ev.type === "note") {
@@ -657,6 +790,7 @@ function solveLayout(model) {
       }
       lastStmtCol = ev.col;
       prevDestI = -1; // notes break any chain
+      prevSrcI = -1;
       continue;
     }
     if (ev.type !== "message") continue;
@@ -688,11 +822,19 @@ function solveLayout(model) {
       boxByPos.set(`${myCol},${fromI}`, id);
       lastStmtCol = myCol;
       prevDestI = -1;
+      prevSrcI = -1;
       continue;
     }
 
     let myCol;
-    if (prevDestI === fromI && lastStmtCol >= 0) {
+    // A counter-back is the case where the new message exactly reverses
+    // the previous one (A -> B then B -> A). By default we BREAK the
+    // chain there so the reply isn't routed back to the originating
+    // sender's box. The `>->` syntax sets ev.counter and opts back into
+    // the shared-column counter-pair rendering.
+    const isCounterBack = (prevSrcI !== -1 && prevSrcI === toI && prevDestI === fromI);
+    const chainBreakForCounter = isCounterBack && !ev.counter;
+    if (prevDestI === fromI && lastStmtCol >= 0 && !chainBreakForCounter) {
       myCol = lastStmtCol; // chain continues in the same column
     } else {
       myCol = lastStmtCol + 1; // new chain starts a new column
@@ -731,7 +873,77 @@ function solveLayout(model) {
 
     lastStmtCol = myCol;
     prevDestI = toI;
+    prevSrcI = fromI;
   }
+
+  // ----- Phase 1.5: extend inter-column gaps for long horizontal captions -----
+  //
+  // Same-lane forward links draw a horizontal arrow in the gap between
+  // the source box and the next same-lane box. The default gap is
+  // COL_W - BOX_W = 40px, which is too narrow for captions wider than
+  // a handful of characters. Here we wrap each such caption at
+  // HLABEL_MAX_CHARS and, if the longest wrapped line wouldn't fit in
+  // the default gap, attribute the extra width to colRightMargin[col]
+  // so subsequent columns shift right. Each unit of right margin
+  // widens the local gap by exactly the same amount.
+  const colRightMargin = [];
+  const maxColPlaced = placedBoxes.reduce((m, b) => Math.max(m, b.col), -1);
+  for (const ev of model.events) {
+    if (ev.type !== "message" || !ev.arrowLabel) continue;
+    if (ev.from !== ev.to) continue;
+    if (ev.standalone || ev.incomingOnly) continue;
+    const fromI = laneIdx.get(ev.from);
+    if (fromI === undefined) continue;
+
+    // Find the next box in this lane (any type).
+    let nextCol = null;
+    for (const p of placedBoxes) {
+      if (p.col <= ev.col) continue;
+      if (p.lane === fromI || (p.lanes && p.lanes.includes(fromI))) {
+        if (nextCol === null || p.col < nextCol) nextCol = p.col;
+      }
+    }
+    const targetCol = nextCol !== null ? nextCol : (ev.col + 1);
+
+    // Wrap the caption and find the widest line (canvas-measured).
+    const lines = wrap(ev.arrowLabel, L.HLABEL_MAX_CHARS);
+    let widest = 0;
+    for (const ln of lines) {
+      const px = measureTextPx(ln, ARROW_LABEL_FONT);
+      if (px > widest) widest = px;
+    }
+    const needed = widest + L.LABEL_H_PADDING;
+
+    const colsApart = targetCol - ev.col;
+    const defaultGap = colsApart * L.COL_W - L.BOX_W;
+    if (needed > defaultGap) {
+      const extra = needed - defaultGap;
+      // Apply to ev.col's right margin. With this model, each unit of
+      // right margin widens the gap by exactly one unit (boxes at
+      // col ev.col stay put; cols after ev.col shift right by `extra`).
+      colRightMargin[ev.col] = Math.max(colRightMargin[ev.col] || 0, extra);
+    }
+  }
+
+  // Build colCenters. We compute one extra "virtual" column past the
+  // last placed column so M.colX(maxColPlaced + 1) is defined — this
+  // covers same-lane arrows that have no next box and need to extend
+  // one column further right. The diagram's visual width
+  // (model.totalColsW) only sums the *actual* placed columns; the
+  // virtual column's space falls naturally into LANE_END_PAD.
+  const colCenters = [];
+  const totalCols = Math.max(maxColPlaced + 2, 1);
+  let cursorX = L.PAD_L + captionW;
+  let totalColsW = 0;
+  for (let c = 0; c < totalCols; c++) {
+    colCenters.push(cursorX + L.COL_W / 2);
+    const colSpan = L.COL_W + (colRightMargin[c] || 0);
+    cursorX += colSpan;
+    if (c <= maxColPlaced) totalColsW += colSpan;
+  }
+  model.colCenters = colCenters;
+  model.colRightMargin = colRightMargin;
+  model.totalColsW = totalColsW;
 
   // ----- Phase 2: compute each statement's arrow -----
   //
@@ -779,7 +991,7 @@ function solveLayout(model) {
         const aRight = M.colX(ev.col) + L.BOX_W / 2;
         const bLeft = nextBox
           ? M.colX(nextBox.col) - L.BOX_W / 2
-          : M.colX(ev.col) + L.COL_W - L.BOX_W / 2;
+          : M.colX(ev.col + 1) - L.BOX_W / 2;
         if (aRight < bLeft) {
           ev.arrowPath = [{ x: aRight, y: cy }, { x: bLeft, y: cy }];
           ev.arrowFlow = true;
@@ -800,7 +1012,9 @@ function solveLayout(model) {
 
         if (blocked) {
           const sourceX = colCx + L.BOX_W / 2;
-          let elbowX = colCx + L.COL_W / 2;
+          // Midpoint of the gap to the next column (handles variable
+          // column spacing introduced for long horizontal captions).
+          let elbowX = (M.colX(ev.col) + M.colX(ev.col + 1)) / 2;
           // If a counter-pair also routes around the same obstruction
           // it would collide on the same elbow x. Offset the verticals
           // by ±8 px in the inter-column gap, with the earlier event
@@ -885,9 +1099,12 @@ function solveLayout(model) {
     }
 
     // ----- Incoming arrow (backward link) -----
-    // Drawn for <-> and <: events: a blue horizontal arrow from the previous
-    // same-source box in this event's source lane. Dedupes when the previous
-    // event already owns a same-lane forward link to this box.
+    // Drawn for <-> and <: events: a horizontal arrow from the IMMEDIATE
+    // predecessor box in this event's source lane. The predecessor is
+    // any earlier box that lives in this lane — message, standalone, or
+    // backward-only — picked by greatest column < ev.col. Dedupes when
+    // the previous event already owns a same-lane forward link that
+    // already lands on this box.
     if ((ev.bidirectional || ev.incomingOnly) && !ev.standalone) {
       let prevBox = null, prevEv = null;
       for (let j = evIdx - 1; j >= 0; j--) {
@@ -895,7 +1112,6 @@ function solveLayout(model) {
         if (e.type !== "message") continue;
         if (laneIdx.get(e.from) !== fromI) continue;
         if (typeof e.col !== "number" || e.col >= ev.col) continue;
-        if (e.standalone) continue;
         const b = getBoxAt(e.col, fromI);
         if (b) { prevBox = b; prevEv = e; break; }
       }
@@ -960,15 +1176,30 @@ function render(model) {
   const SECTION_H = hasSections ? L.SECTION_H_WHEN_PRESENT : 0;
   const TOP_OF_LANES = L.PAD_T_TOP + TITLE_H + SECTION_H;
 
-  const totalW = L.PAD_L + L.CAPTION_W + numCols * L.COL_W + L.LANE_END_PAD + PAD_R;
-  const totalH = TOP_OF_LANES + numLanes * L.LANE_H + (numLanes - 1) * L.LANE_GAP + PAD_B;
+  // Cumulative width of the column band. Uses the solver-precomputed
+  // model.totalColsW (which accounts for per-column right margins) when
+  // available, otherwise falls back to uniform spacing.
+  const captionW = (typeof model.captionW === "number") ? model.captionW : L.CAPTION_W;
+  const colsBandW = (typeof model.totalColsW === "number")
+    ? model.totalColsW
+    : numCols * L.COL_W;
+  const totalW = Math.ceil(L.PAD_L + captionW + colsBandW + L.LANE_END_PAD + PAD_R);
+  const totalH = Math.ceil(TOP_OF_LANES + numLanes * L.LANE_H + (numLanes - 1) * L.LANE_GAP + PAD_B);
 
   const laneIdx = new Map();
   model.lanes.forEach((l, i) => laneIdx.set(l, i));
 
   const laneY = i => TOP_OF_LANES + i * (L.LANE_H + L.LANE_GAP);
   const laneCY = i => laneY(i) + L.LANE_H / 2;
-  const colX = c => L.PAD_L + L.CAPTION_W + c * L.COL_W + L.COL_W / 2;
+  const colX = c => {
+    const cc = model.colCenters;
+    if (cc && c < cc.length) return cc[c];
+    if (cc && cc.length > 0) {
+      const last = cc.length - 1;
+      return cc[last] + (c - last) * L.COL_W;
+    }
+    return L.PAD_L + captionW + c * L.COL_W + L.COL_W / 2;
+  };
 
   const parts = [];
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalW} ${totalH}" width="${totalW}" height="${totalH}" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif">`);
@@ -1008,7 +1239,7 @@ function render(model) {
   model.lanes.forEach((lane, i) => {
     const y = laneY(i);
     const frameX = L.PAD_L;
-    const frameW = L.CAPTION_W + numCols * L.COL_W + L.LANE_END_PAD;
+    const frameW = captionW + colsBandW + L.LANE_END_PAD;
     parts.push(`<rect x="${frameX}" y="${y}" width="${frameW}" height="${L.LANE_H}" rx="10" ry="10" fill="#fafbfc" stroke="#d6dae0" stroke-width="1.25"/>`);
 
     const capLines = lane.split("\n");
@@ -1237,7 +1468,7 @@ function arrowLabelSvg(arrowPath, label, side, centerY) {
 
   const fontSize = 11;
   const lineH = 13;
-  const maxChars = isHorizontal ? 24 : 14;
+  const maxChars = isHorizontal ? LAYOUT.HLABEL_MAX_CHARS : LAYOUT.VLABEL_MAX_CHARS;
   const lines = wrap(label, maxChars);
 
   let x, y, anchor, baseline;
@@ -1280,9 +1511,20 @@ function wrap(text, maxChars) {
     let cur = "";
     for (const word of para.split(/\s+/)) {
       if (!word) continue;
-      if (!cur) cur = word;
-      else if (cur.length + 1 + word.length <= maxChars) cur += " " + word;
-      else { lines.push(cur); cur = word; }
+      // Chop overlong words first so a single token can't overrun the
+      // available width. Each chopped chunk goes on its own line; the
+      // tail (which is now <= maxChars) falls through to the regular
+      // word-fits-or-starts-a-new-line path below.
+      let w = word;
+      while (w.length > maxChars) {
+        if (cur) { lines.push(cur); cur = ""; }
+        lines.push(w.slice(0, maxChars));
+        w = w.slice(maxChars);
+      }
+      if (!w) continue;
+      if (!cur) cur = w;
+      else if (cur.length + 1 + w.length <= maxChars) cur += " " + w;
+      else { lines.push(cur); cur = w; }
     }
     if (cur) lines.push(cur);
   }
@@ -1312,7 +1554,7 @@ function doRender() {
     return;
   }
   if (!model.lanes.length) {
-    diagram.innerHTML = `<div class="error">No participants yet. Try: <code>Alice -&gt; Bob: hello</code></div>`;
+    diagram.innerHTML = "";
     sizeInfo.textContent = "";
     status.textContent = "";
     return;
@@ -1323,6 +1565,7 @@ function doRender() {
   if (svg) {
     sizeInfo.textContent = `${svg.getAttribute("width")} × ${svg.getAttribute("height")}`;
   }
+  applyZoom();
   status.textContent = model.errors.length
     ? `${model.errors.length} parse warning${model.errors.length === 1 ? "" : "s"}`
     : `${model.lanes.length} lane${model.lanes.length === 1 ? "" : "s"}, ${model.events.length} event${model.events.length === 1 ? "" : "s"}`;
@@ -1336,12 +1579,140 @@ function doRender() {
 
 editor.addEventListener("input", scheduleRender);
 
-document.getElementById("sample-picker").addEventListener("change", e => {
-  const k = e.target.value;
-  if (!k) return;
-  editor.value = SAMPLES[k];
-  doRender();
-  e.target.value = "";
+// ---------- zoom ----------
+// The diagram is an SVG with explicit width/height attributes. Zoom
+// scales those attributes (the viewBox is left untouched so the
+// internal coordinate system never changes). The wrapping div has
+// overflow:auto so scrollbars appear naturally when the scaled SVG
+// exceeds the viewport.
+const ZOOM_STORAGE_KEY = "swimlane-studio-zoom";
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 4.0;
+const ZOOM_STEP = 0.25;
+let currentZoom = (() => {
+  try {
+    const v = parseFloat(localStorage.getItem(ZOOM_STORAGE_KEY));
+    return Number.isFinite(v) && v >= ZOOM_MIN && v <= ZOOM_MAX ? v : 1.0;
+  } catch { return 1.0; }
+})();
+const zoomLevelEl = document.getElementById("zoom-level");
+zoomLevelEl.textContent = Math.round(currentZoom * 100) + "%";
+
+function applyZoom() {
+  const svg = diagram.querySelector("svg");
+  if (!svg) return;
+  const vb = svg.viewBox && svg.viewBox.baseVal;
+  const naturalW = (vb && vb.width) || parseFloat(svg.getAttribute("width")) || 0;
+  const naturalH = (vb && vb.height) || parseFloat(svg.getAttribute("height")) || 0;
+  svg.setAttribute("width", Math.round(naturalW * currentZoom));
+  svg.setAttribute("height", Math.round(naturalH * currentZoom));
+  zoomLevelEl.textContent = Math.round(currentZoom * 100) + "%";
+}
+
+// Set zoom without snapping (used by Fit and pinch gestures).
+function setZoomExact(z) {
+  currentZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+  try { localStorage.setItem(ZOOM_STORAGE_KEY, String(currentZoom)); } catch {}
+  applyZoom();
+}
+
+function setZoom(z) {
+  // Snap to ZOOM_STEP increments to keep nice round percentages.
+  setZoomExact(Math.round(z / ZOOM_STEP) * ZOOM_STEP);
+}
+
+// Zoom while keeping the content point under (cx, cy) fixed on screen.
+// Adjusts diagram-wrap's scroll position so a pinch/wheel gesture feels
+// natural — the point you're zooming toward stays under your cursor.
+const diagramWrap = document.getElementById("diagram-wrap");
+function zoomAt(newZoom, cx, cy) {
+  const rect = diagramWrap.getBoundingClientRect();
+  const px = (cx - rect.left) + diagramWrap.scrollLeft;
+  const py = (cy - rect.top) + diagramWrap.scrollTop;
+  const oldZoom = currentZoom;
+  setZoomExact(newZoom);
+  if (currentZoom === oldZoom) return; // clamped — no scroll adjustment
+  const scale = currentZoom / oldZoom;
+  diagramWrap.scrollLeft = px * scale - (cx - rect.left);
+  diagramWrap.scrollTop = py * scale - (cy - rect.top);
+}
+
+document.getElementById("zoom-in").addEventListener("click", () => setZoom(currentZoom + ZOOM_STEP));
+document.getElementById("zoom-out").addEventListener("click", () => setZoom(currentZoom - ZOOM_STEP));
+document.getElementById("zoom-reset").addEventListener("click", () => setZoom(1.0));
+
+// Fit zoom: compute the largest zoom factor that fits the diagram inside
+// the visible diagram-wrap viewport in both dimensions. Honours a small
+// inset so the diagram doesn't kiss the scrollbar edges. Fit is treated
+// as a one-shot action — subsequent edits don't re-fit automatically.
+document.getElementById("zoom-fit").addEventListener("click", () => {
+  const svg = diagram.querySelector("svg");
+  if (!svg) return;
+  const vb = svg.viewBox && svg.viewBox.baseVal;
+  const naturalW = (vb && vb.width) || parseFloat(svg.getAttribute("width")) || 0;
+  const naturalH = (vb && vb.height) || parseFloat(svg.getAttribute("height")) || 0;
+  if (!naturalW || !naturalH) return;
+  const inset = 48; // #diagram has 24px padding plus a small breathing margin
+  const availW = Math.max(50, diagramWrap.clientWidth - inset);
+  const availH = Math.max(50, diagramWrap.clientHeight - inset);
+  setZoomExact(Math.min(availW / naturalW, availH / naturalH));
+});
+
+// Trackpad pinch on macOS is delivered as a wheel event with ctrlKey,
+// and ctrl/cmd+wheel is the desktop zoom convention. preventDefault()
+// stops the browser's own page-zoom from kicking in. The exponential
+// mapping keeps small trackpad deltas smooth without making one mouse-
+// wheel notch (deltaY ~= 100) leap a huge amount.
+diagramWrap.addEventListener("wheel", e => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  e.preventDefault();
+  const factor = Math.exp(-e.deltaY * 0.003);
+  zoomAt(currentZoom * factor, e.clientX, e.clientY);
+}, { passive: false });
+
+// Two-finger touch pinch.
+let _pinch = null;
+function _pinchDist(t1, t2) { return Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY); }
+function _pinchCenter(t1, t2) { return { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 }; }
+diagramWrap.addEventListener("touchstart", e => {
+  if (e.touches.length === 2) {
+    _pinch = {
+      startDist: _pinchDist(e.touches[0], e.touches[1]),
+      startZoom: currentZoom,
+    };
+  }
+}, { passive: true });
+diagramWrap.addEventListener("touchmove", e => {
+  if (e.touches.length === 2 && _pinch) {
+    e.preventDefault();
+    const dist = _pinchDist(e.touches[0], e.touches[1]);
+    const center = _pinchCenter(e.touches[0], e.touches[1]);
+    zoomAt(_pinch.startZoom * (dist / _pinch.startDist), center.x, center.y);
+  }
+}, { passive: false });
+function _endPinch() { _pinch = null; }
+diagramWrap.addEventListener("touchend", _endPinch, { passive: true });
+diagramWrap.addEventListener("touchcancel", _endPinch, { passive: true });
+
+// ---------- help modal ----------
+const helpModal = document.getElementById("help-modal");
+const helpButton = document.getElementById("help-button");
+const helpClose = document.getElementById("help-close");
+function openHelp() {
+  helpModal.hidden = false;
+  helpClose.focus();
+}
+function closeHelp() {
+  helpModal.hidden = true;
+  helpButton.focus();
+}
+helpButton.addEventListener("click", openHelp);
+helpClose.addEventListener("click", closeHelp);
+helpModal.addEventListener("click", e => {
+  if (e.target === helpModal) closeHelp();
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !helpModal.hidden) closeHelp();
 });
 
 document.getElementById("copy-source").addEventListener("click", async () => {
@@ -1565,10 +1936,87 @@ editor.addEventListener("input", () => {
   try { localStorage.setItem(SRC_STORAGE_KEY, editor.value); }
   catch {}
 });
-// Explicit sample picks should overwrite the saved source.
-document.getElementById("sample-picker").addEventListener("change", () => {
-  try { localStorage.setItem(SRC_STORAGE_KEY, editor.value); }
-  catch {}
+
+// ---------- save / load / new ----------
+// "Dirty" means the current editor content differs from the last
+// explicitly Saved (or Loaded) version. We persist that baseline to
+// localStorage so the warning survives reloads — if the tab was closed
+// with unsaved edits, the next open still treats them as unsaved.
+const SAVE_STATE_KEY = "swimlane-studio-saved-baseline";
+let lastSavedContent = (() => {
+  try { return localStorage.getItem(SAVE_STATE_KEY) || ""; }
+  catch { return ""; }
+})();
+function isDirty() { return editor.value !== lastSavedContent; }
+function markSaved() {
+  lastSavedContent = editor.value;
+  try { localStorage.setItem(SAVE_STATE_KEY, lastSavedContent); } catch {}
+}
+
+const loadInput = document.createElement("input");
+loadInput.type = "file";
+loadInput.accept = ".txt,text/plain";
+loadInput.style.display = "none";
+document.body.appendChild(loadInput);
+
+document.getElementById("new-button").addEventListener("click", () => {
+  if (isDirty() && !confirm("Discard unsaved changes and start a new diagram?")) return;
+  editor.value = "";
+  markSaved();
+  editor.dispatchEvent(new Event("input"));
+});
+
+document.getElementById("load-button").addEventListener("click", () => {
+  if (isDirty() && !confirm("Discard unsaved changes and load a different diagram?")) return;
+  // Resetting value lets the same file be reselected and fire change.
+  loadInput.value = "";
+  loadInput.click();
+});
+
+loadInput.addEventListener("change", async () => {
+  const file = loadInput.files && loadInput.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    editor.value = text;
+    markSaved();
+    editor.dispatchEvent(new Event("input"));
+    flashStatus(`Loaded ${file.name}`);
+  } catch (e) {
+    flashStatus("Load failed");
+  }
+});
+
+document.getElementById("save-button").addEventListener("click", async () => {
+  const text = editor.value;
+  // Prefer the File System Access API when available so the user picks
+  // a real save location; fall back to a download otherwise.
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: "swimlane.txt",
+        types: [{ description: "Text file", accept: { "text/plain": [".txt"] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+      markSaved();
+      flashStatus("Saved");
+    } catch (e) {
+      if (e && e.name !== "AbortError") flashStatus("Save failed");
+    }
+    return;
+  }
+  triggerDownload(new Blob([text], { type: "text/plain" }), "swimlane.txt");
+  markSaved();
+  flashStatus("Saved");
+});
+
+window.addEventListener("beforeunload", e => {
+  if (isDirty()) {
+    e.preventDefault();
+    e.returnValue = ""; // legacy browsers need a string assignment
+  }
 });
 
 // ---------- hot reload ----------
@@ -1601,7 +2049,7 @@ document.getElementById("sample-picker").addEventListener("change", () => {
 })();
 
 // initial load
-editor.value = savedSource != null ? savedSource : SAMPLES.order;
+editor.value = savedSource != null ? savedSource : "";
 doRender();
 </script>
 </body>
