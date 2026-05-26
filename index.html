@@ -176,6 +176,39 @@
     color: var(--ink-soft);
     font-variant-numeric: tabular-nums;
   }
+  .orient-toggle {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-right: 4px;
+  }
+  .orient-toggle button {
+    font-family: var(--sans);
+    font-size: 14px;
+    padding: 3px 9px;
+    border: none;
+    background: var(--panel);
+    color: var(--ink-soft);
+    cursor: pointer;
+    line-height: 1.2;
+    border-radius: 0;
+    min-width: 0;
+    transition: background 0.12s, color 0.12s;
+  }
+  .orient-toggle button + button {
+    border-left: 1px solid var(--line);
+  }
+  .orient-toggle button:hover {
+    background: #f3f4f6;
+  }
+  .orient-toggle button.active {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+  .orient-toggle button.active:hover {
+    background: #1d4ed8;
+  }
   #size-info {
     margin-left: 8px;
     font-weight: normal;
@@ -364,6 +397,10 @@
       <div class="pane-header">
         <span>Diagram</span>
         <span class="zoom-controls">
+          <span class="orient-toggle" role="radiogroup" aria-label="Diagram orientation">
+            <button id="orient-h" type="button" class="active" role="radio" aria-checked="true" title="Horizontal swimlanes" aria-label="Horizontal swimlanes">&#8596;</button>
+            <button id="orient-v" type="button" role="radio" aria-checked="false" title="Vertical swimlanes" aria-label="Vertical swimlanes">&#8597;</button>
+          </span>
           <button id="zoom-out" aria-label="Zoom out" title="Zoom out">&minus;</button>
           <span class="zoom-level" id="zoom-level">100%</span>
           <button id="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
@@ -634,12 +671,29 @@ const LAYOUT = {
 // long horizontal captions); falls back to uniform COL_W spacing
 // otherwise. Phase 1 runs with the uniform fallback; Phase 1.5 sets
 // colCenters before Phase 2 uses it.
+//
+// In vertical orientation each lane gets more "height" in horizontal
+// space (which becomes lane WIDTH after the transposition transform)
+// so that boxes and wrapped captions have room to breathe.
+function laneHeightFor(model) {
+  return model.orientation === "vertical" ? 220 : LAYOUT.LANE_H;
+}
+// Column spacing in the solver's horizontal frame. In vertical
+// orientation this becomes the VERTICAL spacing between rows in the
+// final SVG. We size it so the gap between adjacent same-lane boxes
+// matches the horizontal-orientation gap (COL_W - BOX_W = 40px), i.e.
+// vertical COL_W = boxH + 40 ≈ 82 for single-line text.
+function colWidthFor(model) {
+  if (model.orientation !== "vertical") return LAYOUT.COL_W;
+  return LAYOUT.BOX_MIN_H + (LAYOUT.COL_W - LAYOUT.BOX_W);
+}
 function layoutMetrics(model) {
   const L = LAYOUT;
   const titleH = model.title ? L.TITLE_H_WHEN_PRESENT : 0;
   const sectionH = model.sections.length > 0 ? L.SECTION_H_WHEN_PRESENT : 0;
   const topOfLanes = L.PAD_T_TOP + titleH + sectionH;
   const captionW = (typeof model.captionW === "number") ? model.captionW : L.CAPTION_W;
+  const laneH = laneHeightFor(model);
   const colX = c => {
     const cc = model.colCenters;
     if (cc && c < cc.length) return cc[c];
@@ -651,10 +705,11 @@ function layoutMetrics(model) {
   };
   return {
     colX,
-    laneY: i => topOfLanes + i * (L.LANE_H + L.LANE_GAP),
-    laneCY: i => topOfLanes + i * (L.LANE_H + L.LANE_GAP) + L.LANE_H / 2,
+    laneY: i => topOfLanes + i * (laneH + L.LANE_GAP),
+    laneCY: i => topOfLanes + i * (laneH + L.LANE_GAP) + laneH / 2,
     laneStartX: L.PAD_L + captionW + L.LANE_START_OFFSET,
     topOfLanes,
+    laneH,
   };
 }
 
@@ -676,21 +731,66 @@ function boxHeightFor(text) {
   return Math.max(L.BOX_MIN_H, lines.length * L.TEXT_LINE_H + L.BOX_PAD_V * 2);
 }
 
+// Box dimensions in the SOLVER's horizontal frame. In horizontal mode
+// these are the visual dimensions; in vertical mode they're swapped so
+// that after the renderer's transposition the box appears LANDSCAPE
+// (BOX_W along the lane direction, text-driven height across time).
+function boxDimsFor(text, orientation) {
+  const L = LAYOUT;
+  const textH = boxHeightFor(text);
+  if (orientation === "vertical") {
+    return { w: textH, h: L.BOX_W };
+  }
+  return { w: L.BOX_W, h: textH };
+}
+
 function solveLayout(model) {
   const L = LAYOUT;
 
-  // Compute an effective caption width per diagram from the longest
-  // lane name (accounting for explicit \n line breaks). Captions render
-  // 14px sans bold; we reserve 18px of left and right padding inside
-  // the caption strip so the longest line never bleeds into the first
-  // box column. Defaults to L.CAPTION_W when no lane name exceeds it.
+  // Compute an effective caption strip extent.
+  // In HORIZONTAL mode this is the WIDTH of the left caption strip,
+  // driven by the longest lane name's rendered width.
+  // In VERTICAL mode (after the renderer's transposition) the captionW
+  // becomes the HEIGHT of the TOP caption strip, so it should be sized
+  // by the number of wrapped caption lines, not by raw name width
+  // (names wrap to fit lane width in vertical mode).
   const CAPTION_LEFT_PAD = 18;
   const CAPTION_RIGHT_PAD = 18;
-  let captionW = L.CAPTION_W;
-  for (const lane of model.lanes) {
-    for (const ln of String(lane).split("\n")) {
-      const px = measureTextPx(ln, LANE_CAPTION_FONT) + CAPTION_LEFT_PAD + CAPTION_RIGHT_PAD;
-      if (px > captionW) captionW = px;
+  const CAPTION_LINE_H = 16;
+  let captionW;
+  if (model.orientation === "vertical") {
+    const laneH = laneHeightFor(model);
+    const maxLineWidthPx = Math.max(40, laneH - 24);
+    let maxLines = 1;
+    for (const lane of model.lanes) {
+      let count = 0;
+      for (const raw of String(lane).split("\n")) {
+        const words = raw.split(/\s+/).filter(Boolean);
+        if (!words.length) { count++; continue; }
+        let cur = "";
+        for (const w of words) {
+          const candidate = cur ? cur + " " + w : w;
+          if (cur && measureTextPx(candidate, LANE_CAPTION_FONT) > maxLineWidthPx) {
+            count++;
+            cur = w;
+          } else {
+            cur = candidate;
+          }
+        }
+        if (cur) count++;
+      }
+      if (count > maxLines) maxLines = count;
+    }
+    // Slim top strip — only the space the wrapped caption lines need
+    // plus a small breathing margin.
+    captionW = maxLines * CAPTION_LINE_H + 14;
+  } else {
+    captionW = L.CAPTION_W;
+    for (const lane of model.lanes) {
+      for (const ln of String(lane).split("\n")) {
+        const px = measureTextPx(ln, LANE_CAPTION_FONT) + CAPTION_LEFT_PAD + CAPTION_RIGHT_PAD;
+        if (px > captionW) captionW = px;
+      }
     }
   }
   model.captionW = captionW;
@@ -761,9 +861,10 @@ function solveLayout(model) {
   for (const ev of model.events) {
     if (ev.type === "note") {
       const tH = boxHeightFor(ev.text);
+      const dims = boxDimsFor(ev.text, model.orientation);
       const maxCol = placedBoxes.reduce((m, p) => Math.max(m, p.col), -1);
       ev.col = maxCol + 1;
-      ev.boxH = tH;
+      ev.boxH = dims.h;
       ev.arrowPath = null;
       ev.selfLoop = false;
       if (ev.lanes && ev.lanes.length > 0) {
@@ -799,6 +900,7 @@ function solveLayout(model) {
     const toI = laneIdx.get(ev.to);
     if (fromI === undefined || toI === undefined) continue;
     const tH = boxHeightFor(ev.text);
+    const dims = boxDimsFor(ev.text, model.orientation);
 
     // Standalone (non-directed) boxes have no arrows of their own, but
     // they DO honour the chain rule for column placement so the previous
@@ -815,10 +917,11 @@ function solveLayout(model) {
       }
       while (colLaneTaken(myCol, fromI)) myCol++;
       ev.col = myCol;
-      ev.boxH = tH;
+      ev.boxH = dims.h;
+      ev.boxW = dims.w;
       ev.selfLoop = false;
       const id = placedBoxes.length;
-      placedBoxes.push({ col: myCol, lane: fromI, h: tH, type: "message" });
+      placedBoxes.push({ col: myCol, lane: fromI, w: dims.w, h: dims.h, type: "message" });
       boxByPos.set(`${myCol},${fromI}`, id);
       lastStmtCol = myCol;
       prevDestI = -1;
@@ -861,13 +964,14 @@ function solveLayout(model) {
     }
 
     ev.col = myCol;
-    ev.boxH = tH;
+    ev.boxH = dims.h;
+    ev.boxW = dims.w;
     // Self-loops are no longer produced by any syntax; the <-> form now
     // means "bidirectional same-lane links" (forward + backward).
     ev.selfLoop = false;
 
     const id = placedBoxes.length;
-    placedBoxes.push({ col: myCol, lane: fromI, h: tH, type: "message" });
+    placedBoxes.push({ col: myCol, lane: fromI, w: dims.w, h: dims.h, type: "message" });
     boxByPos.set(`${myCol},${fromI}`, id);
     recordArrowAtCol(myCol, fromI, toI);
 
@@ -915,7 +1019,13 @@ function solveLayout(model) {
     const needed = widest + L.LABEL_H_PADDING;
 
     const colsApart = targetCol - ev.col;
-    const defaultGap = colsApart * L.COL_W - L.BOX_W;
+    const effColW = colWidthFor(model);
+    // In vertical mode the effective box "width" (along the col axis)
+    // is the small text-driven boxH; in horizontal mode it's BOX_W.
+    const effBoxAlong = (model.orientation === "vertical")
+      ? boxHeightFor(ev.text)
+      : L.BOX_W;
+    const defaultGap = colsApart * effColW - effBoxAlong;
     if (needed > defaultGap) {
       const extra = needed - defaultGap;
       // Apply to ev.col's right margin. With this model, each unit of
@@ -933,11 +1043,12 @@ function solveLayout(model) {
   // virtual column's space falls naturally into LANE_END_PAD.
   const colCenters = [];
   const totalCols = Math.max(maxColPlaced + 2, 1);
+  const effColW = colWidthFor(model);
   let cursorX = L.PAD_L + captionW;
   let totalColsW = 0;
   for (let c = 0; c < totalCols; c++) {
-    colCenters.push(cursorX + L.COL_W / 2);
-    const colSpan = L.COL_W + (colRightMargin[c] || 0);
+    colCenters.push(cursorX + effColW / 2);
+    const colSpan = effColW + (colRightMargin[c] || 0);
     cursorX += colSpan;
     if (c <= maxColPlaced) totalColsW += colSpan;
   }
@@ -988,9 +1099,11 @@ function solveLayout(model) {
           }
         }
         const cy = M.laneCY(fromI);
-        const aRight = M.colX(ev.col) + L.BOX_W / 2;
+        const myW = (typeof myBox.w === "number") ? myBox.w : L.BOX_W;
+        const nextW = (nextBox && typeof nextBox.w === "number") ? nextBox.w : L.BOX_W;
+        const aRight = M.colX(ev.col) + myW / 2;
         const bLeft = nextBox
-          ? M.colX(nextBox.col) - L.BOX_W / 2
+          ? M.colX(nextBox.col) - nextW / 2
           : M.colX(ev.col + 1) - L.BOX_W / 2;
         if (aRight < bLeft) {
           ev.arrowPath = [{ x: aRight, y: cy }, { x: bLeft, y: cy }];
@@ -1011,7 +1124,8 @@ function solveLayout(model) {
         }
 
         if (blocked) {
-          const sourceX = colCx + L.BOX_W / 2;
+          const myW = (typeof myBox.w === "number") ? myBox.w : L.BOX_W;
+          const sourceX = colCx + myW / 2;
           // Midpoint of the gap to the next column (handles variable
           // column spacing introduced for long horizontal captions).
           let elbowX = (M.colX(ev.col) + M.colX(ev.col + 1)) / 2;
@@ -1059,7 +1173,8 @@ function solveLayout(model) {
             // horizontal right into the destination box's LEFT edge.
             const sourceX = colCx;
             const sourceY = goingDown ? myCy + myBox.h / 2 : myCy - myBox.h / 2;
-            const destLeft = M.colX(destCol) - L.BOX_W / 2;
+            const destW = (typeof destBox.w === "number") ? destBox.w : L.BOX_W;
+            const destLeft = M.colX(destCol) - destW / 2;
             ev.arrowPath = [
               { x: sourceX, y: sourceY },
               { x: sourceX, y: destCy },
@@ -1120,8 +1235,10 @@ function solveLayout(model) {
         const prevHasOut = prevIsSameLane && !prevEv.incomingOnly && !prevEv.standalone;
         if (!prevHasOut) {
           const cy = M.laneCY(fromI);
-          const aRight = M.colX(prevBox.col) + L.BOX_W / 2;
-          const bLeft = M.colX(ev.col) - L.BOX_W / 2;
+          const prevW = (typeof prevBox.w === "number") ? prevBox.w : L.BOX_W;
+          const myW = (typeof myBox.w === "number") ? myBox.w : L.BOX_W;
+          const aRight = M.colX(prevBox.col) + prevW / 2;
+          const bLeft = M.colX(ev.col) - myW / 2;
           if (aRight < bLeft) {
             ev.arrowPathIn = [{ x: aRight, y: cy }, { x: bLeft, y: cy }];
           }
@@ -1184,13 +1301,14 @@ function render(model) {
     ? model.totalColsW
     : numCols * L.COL_W;
   const totalW = Math.ceil(L.PAD_L + captionW + colsBandW + L.LANE_END_PAD + PAD_R);
-  const totalH = Math.ceil(TOP_OF_LANES + numLanes * L.LANE_H + (numLanes - 1) * L.LANE_GAP + PAD_B);
+  const laneH = laneHeightFor(model);
+  const totalH = Math.ceil(TOP_OF_LANES + numLanes * laneH + (numLanes - 1) * L.LANE_GAP + PAD_B);
 
   const laneIdx = new Map();
   model.lanes.forEach((l, i) => laneIdx.set(l, i));
 
-  const laneY = i => TOP_OF_LANES + i * (L.LANE_H + L.LANE_GAP);
-  const laneCY = i => laneY(i) + L.LANE_H / 2;
+  const laneY = i => TOP_OF_LANES + i * (laneH + L.LANE_GAP);
+  const laneCY = i => laneY(i) + laneH / 2;
   const colX = c => {
     const cc = model.colCenters;
     if (cc && c < cc.length) return cc[c];
@@ -1201,8 +1319,21 @@ function render(model) {
     return L.PAD_L + captionW + c * L.COL_W + L.COL_W / 2;
   };
 
+  // Vertical orientation: transpose the diagram so (x, y) becomes (y, x).
+  // This makes the original lane axis (y) the new horizontal axis (lanes
+  // become columns running left-to-right in declaration order), and the
+  // original col axis (x) becomes the new vertical axis (time runs
+  // top-to-bottom). Each <text> element gets a matching local
+  // transposition around its anchor so labels render horizontally.
+  const isVertical = model.orientation === "vertical";
+  const svgW = isVertical ? totalH : totalW;
+  const svgH = isVertical ? totalW : totalH;
+  const tx = (x, y) => isVertical
+    ? ` transform="matrix(0 1 1 0 ${x - y} ${y - x})"`
+    : "";
+
   const parts = [];
-  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalW} ${totalH}" width="${totalW}" height="${totalH}" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif">`);
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgW} ${svgH}" width="${svgW}" height="${svgH}" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif">`);
 
   parts.push(`<defs>
     <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
@@ -1213,8 +1344,20 @@ function render(model) {
     </marker>
   </defs>`);
 
+  if (isVertical) {
+    // Rotate the rendered diagram 90° clockwise around the origin and
+    // translate so it lands in positive coordinate space.
+    // Transpose: (x, y) → (y, x). This puts the original top edge on
+    // the LEFT in the final SVG, so lane 0 (declared first) ends up on
+    // the left, and the original left-to-right time axis becomes
+    // top-to-bottom.
+    parts.push(`<g transform="matrix(0 1 1 0 0 0)">`);
+  }
+
   if (model.title) {
-    parts.push(`<text x="${totalW / 2}" y="${L.PAD_T_TOP + 26}" text-anchor="middle" font-size="18" font-weight="600" fill="#111827">${escXml(model.title)}</text>`);
+    const titleX = totalW / 2;
+    const titleY = L.PAD_T_TOP + 26;
+    parts.push(`<text x="${titleX}" y="${titleY}" text-anchor="middle" font-size="18" font-weight="600" fill="#111827"${tx(titleX, titleY)}>${escXml(model.title)}</text>`);
   }
 
   if (hasSections) {
@@ -1226,35 +1369,45 @@ function render(model) {
       const x1 = colX(sc) - L.COL_W / 2 + 4;
       const x2 = colX(ec) + L.COL_W / 2 - 4;
       const w = x2 - x1;
+      const labelX = (x1 + x2) / 2;
+      const labelY = bannerY + 15;
       parts.push(`<rect x="${x1}" y="${bannerY}" width="${w}" height="22" rx="6" ry="6" fill="#eff6ff" stroke="#bfdbfe"/>`);
-      parts.push(`<text x="${(x1 + x2) / 2}" y="${bannerY + 15}" text-anchor="middle" font-size="12" font-weight="600" fill="#1d4ed8">${escXml(s.label)}</text>`);
+      parts.push(`<text x="${labelX}" y="${labelY}" text-anchor="middle" font-size="12" font-weight="600" fill="#1d4ed8"${tx(labelX, labelY)}>${escXml(s.label)}</text>`);
       parts.push(`<line x1="${x1}" y1="${TOP_OF_LANES - 2}" x2="${x1}" y2="${totalH - PAD_B + 4}" stroke="#dbeafe" stroke-dasharray="3 4" stroke-width="1"/>`);
       parts.push(`<line x1="${x2}" y1="${TOP_OF_LANES - 2}" x2="${x2}" y2="${totalH - PAD_B + 4}" stroke="#dbeafe" stroke-dasharray="3 4" stroke-width="1"/>`);
     }
   }
 
-  // Lane frames span the full lane area (caption + box columns) and the
-  // caption is rendered as text inside the lane at its left edge,
-  // before the first box.
+  // Lane frames span the full lane area (caption + box columns). In
+  // horizontal orientation the lane caption is rendered as left-aligned
+  // text inside the frame, before the first box. In vertical
+  // orientation we render the caption later (after closing the
+  // transposition group) so we can centre and wrap it cleanly in the
+  // final coordinate system.
   model.lanes.forEach((lane, i) => {
     const y = laneY(i);
     const frameX = L.PAD_L;
     const frameW = captionW + colsBandW + L.LANE_END_PAD;
-    parts.push(`<rect x="${frameX}" y="${y}" width="${frameW}" height="${L.LANE_H}" rx="10" ry="10" fill="#fafbfc" stroke="#d6dae0" stroke-width="1.25"/>`);
+    parts.push(`<rect x="${frameX}" y="${y}" width="${frameW}" height="${laneH}" rx="10" ry="10" fill="#fafbfc" stroke="#d6dae0" stroke-width="1.25"/>`);
 
-    const capLines = lane.split("\n");
-    const cy = y + L.LANE_H / 2;
-    const capLineH = 16;
-    const startY = cy - ((capLines.length - 1) * capLineH) / 2;
-    capLines.forEach((ln, k) => {
-      parts.push(`<text x="${L.PAD_L + 18}" y="${startY + k * capLineH}" text-anchor="start" dominant-baseline="middle" fill="#1f2937" font-size="14" font-weight="600">${escXml(ln)}</text>`);
-    });
+    if (!isVertical) {
+      const capLines = lane.split("\n");
+      const cy = y + laneH / 2;
+      const capLineH = 16;
+      const startY = cy - ((capLines.length - 1) * capLineH) / 2;
+      capLines.forEach((ln, k) => {
+        const lx = L.PAD_L + 18;
+        const ly = startY + k * capLineH;
+        parts.push(`<text x="${lx}" y="${ly}" text-anchor="start" dominant-baseline="middle" fill="#1f2937" font-size="14" font-weight="600">${escXml(ln)}</text>`);
+      });
+    }
   });
 
   // Build the visual model from the solver's output. Each event has its
   // resolved col + boxH and (for messages) the arrow segments.
   const boxes = [];
   const floatingNotes = [];
+  let firstActivityMarked = false;
 
   model.events.forEach(ev => {
     if (ev.type === "message") {
@@ -1263,6 +1416,7 @@ function render(model) {
       if (fromI === undefined) return;
       const lines = wrap(ev.text || "", L.CHAR_BUDGET);
       const h = ev.boxH || boxHeightFor(ev.text);
+      const w = ev.boxW || L.BOX_W;
       const toI = laneIdx.get(ev.to);
       const labelCenterY = (toI !== undefined && toI !== fromI)
         ? (laneCY(fromI) + laneCY(toI)) / 2
@@ -1271,10 +1425,11 @@ function render(model) {
         col: ev.col,
         cx: colX(ev.col),
         cy: laneCY(fromI),
-        w: L.BOX_W,
+        w,
         h,
         lines,
         type: "activity",
+        isFirst: !firstActivityMarked,
         dashed: ev.dashed,
         selfLoop: ev.selfLoop,
         arrowPath: ev.arrowPath || null,
@@ -1284,6 +1439,7 @@ function render(model) {
         labelSide: ev.labelSide || null,
         arrowLabelCenterY: labelCenterY,
       });
+      firstActivityMarked = true;
     } else if (ev.type === "note") {
       const lines = wrap(ev.text || "", L.CHAR_BUDGET);
       if (!ev.lanes || ev.lanes.length === 0) {
@@ -1293,7 +1449,7 @@ function render(model) {
       const indices = ev.lanes.map(l => laneIdx.get(l)).filter(i => i !== undefined).sort((a, b) => a - b);
       if (!indices.length) return;
       const top = laneY(indices[0]) + 10;
-      const bottom = laneY(indices[indices.length - 1]) + L.LANE_H - 10;
+      const bottom = laneY(indices[indices.length - 1]) + laneH - 10;
       boxes.push({
         col: ev.col,
         cx: colX(ev.col),
@@ -1314,7 +1470,7 @@ function render(model) {
     parts.push(`<rect x="${fn.cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" rx="4" fill="#fef3c7" stroke="#f59e0b"/>`);
     const startDy = -(fn.lines.length - 1) * L.TEXT_LINE_H / 2;
     const tspans = fn.lines.map((ln, i) => `<tspan x="${fn.cx}" dy="${i === 0 ? startDy : L.TEXT_LINE_H}">${escXml(ln)}</tspan>`).join("");
-    parts.push(`<text x="${fn.cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-size="11" fill="#78350f">${tspans}</text>`);
+    parts.push(`<text x="${fn.cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-size="11" fill="#78350f"${tx(fn.cx, cy)}>${tspans}</text>`);
   });
 
   // Render arrow segments precomputed by the solver, then self-loops, all
@@ -1344,9 +1500,9 @@ function render(model) {
       // <->). When only an incoming arrow exists (the <: form), the
       // caption goes on it instead.
       if (box.arrowPath) {
-        parts.push(arrowLabelSvg(box.arrowPath, box.arrowLabel, box.labelSide, box.arrowLabelCenterY));
+        parts.push(arrowLabelSvg(box.arrowPath, box.arrowLabel, box.labelSide, box.arrowLabelCenterY, isVertical));
       } else if (box.arrowPathIn) {
-        parts.push(arrowLabelSvg(box.arrowPathIn, box.arrowLabel));
+        parts.push(arrowLabelSvg(box.arrowPathIn, box.arrowLabel, null, null, isVertical));
       }
     }
     if (box.selfLoop) {
@@ -1364,21 +1520,65 @@ function render(model) {
     }
   });
 
-  // Render the boxes in front of the arrows
+  // Render the boxes in front of the arrows. In vertical mode the box
+  // dimensions stored on each box already account for the transposition
+  // (w and h are swapped relative to the desired landscape final
+  // appearance), so the rendered rect naturally lands at the right
+  // position with the right edges for arrows to dock onto.
   boxes.forEach(box => {
     const x = box.cx - box.w / 2;
     const y = box.cy - box.h / 2;
     if (box.type === "activity") {
-      parts.push(`<rect x="${x}" y="${y}" width="${box.w}" height="${box.h}" rx="6" ry="6" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.25"/>`);
+      const strokeWidth = box.isFirst ? 2.5 : 1.25;
+      parts.push(`<rect x="${x}" y="${y}" width="${box.w}" height="${box.h}" rx="6" ry="6" fill="#dbeafe" stroke="#3b82f6" stroke-width="${strokeWidth}"/>`);
     } else if (box.type === "note") {
       parts.push(`<rect x="${x}" y="${y}" width="${box.w}" height="${box.h}" rx="6" ry="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.1"/>`);
     }
     const startDy = -(box.lines.length - 1) * L.TEXT_LINE_H / 2;
     const tspans = box.lines.map((ln, i) => `<tspan x="${box.cx}" dy="${i === 0 ? startDy : L.TEXT_LINE_H}">${escXml(ln)}</tspan>`).join("");
     const fill = box.type === "note" ? "#78350f" : "#1e3a8a";
-    parts.push(`<text x="${box.cx}" y="${box.cy}" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="${fill}" font-weight="500">${tspans}</text>`);
+    parts.push(`<text x="${box.cx}" y="${box.cy}" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="${fill}" font-weight="500"${tx(box.cx, box.cy)}>${tspans}</text>`);
   });
 
+  if (isVertical) {
+    parts.push(`</g>`);
+    // Lane captions in vertical mode are rendered OUTSIDE the
+    // transposition group so we can use native SVG positioning:
+    // centred above each lane column with proper word wrap.
+    // The lane's final centre x is the same value as the lane's
+    // centre y in the horizontal frame (because the parent transform
+    // swaps x and y).
+    const captionStripFinalCenterY = L.PAD_L + captionW / 2;
+    const captionFontSize = 14;
+    const capLineH = 16;
+    const maxLineWidthPx = Math.max(40, laneH - 24);
+    model.lanes.forEach((lane, i) => {
+      const colCenterFinalX = laneCY(i);
+      // Wrap each line of the lane name to fit the column width.
+      const rawLines = String(lane).split("\n");
+      const wrapped = [];
+      for (const raw of rawLines) {
+        const words = raw.split(/\s+/).filter(Boolean);
+        if (words.length === 0) { wrapped.push(""); continue; }
+        let cur = "";
+        for (const w of words) {
+          const candidate = cur ? cur + " " + w : w;
+          if (cur && measureTextPx(candidate, LANE_CAPTION_FONT) > maxLineWidthPx) {
+            wrapped.push(cur);
+            cur = w;
+          } else {
+            cur = candidate;
+          }
+        }
+        if (cur) wrapped.push(cur);
+      }
+      const startY = captionStripFinalCenterY - ((wrapped.length - 1) * capLineH) / 2;
+      wrapped.forEach((ln, k) => {
+        const y = startY + k * capLineH;
+        parts.push(`<text x="${colCenterFinalX}" y="${y}" text-anchor="middle" dominant-baseline="middle" fill="#1f2937" font-size="${captionFontSize}" font-weight="600">${escXml(ln)}</text>`);
+      });
+    });
+  }
   parts.push(`</svg>`);
   return parts.join("");
 }
@@ -1453,7 +1653,7 @@ function polylineToPath(points, radius = 8) {
 // to the side of the longest segment (right by default, or left/right
 // when explicitly forced — used when a box has both an outgoing and an
 // incoming arrow that would otherwise overlap).
-function arrowLabelSvg(arrowPath, label, side, centerY) {
+function arrowLabelSvg(arrowPath, label, side, centerY, isVertical) {
   if (!label || !arrowPath || arrowPath.length < 2) return "";
   let bestI = 0, bestLen = 0;
   for (let i = 0; i < arrowPath.length - 1; i++) {
@@ -1472,7 +1672,37 @@ function arrowLabelSvg(arrowPath, label, side, centerY) {
   const lines = wrap(label, maxChars);
 
   let x, y, anchor, baseline;
-  if (isHorizontal) {
+  // For "above the arrow" placement we move the anchor BACK along the
+  // text's perpendicular axis by enough that the bottom of a single
+  // line of caption text still clears the line. We use a slightly
+  // larger gap for multi-line labels.
+  const aboveGap = 6;
+  if (isVertical) {
+    // After the diagram's transposition, a horizontal segment in the
+    // solver frame is a VERTICAL arrow in the final SVG, and vice
+    // versa. We pick label positioning so the caption ends up
+    // centred and CLEAR of the visual arrow line.
+    if (isHorizontal) {
+      // Final: vertical arrow. Place label to the side in final
+      // (= above/below the horizontal segment in solver frame).
+      const useSide = side || "right";
+      x = midX;
+      y = useSide === "left" ? midY + 8 : midY - 8;
+      anchor = "middle";
+      baseline = useSide === "left" ? "hanging" : "auto";
+    } else {
+      // Final: horizontal arrow. Centre the label horizontally on
+      // the arrow midpoint, with its baseline a few pixels ABOVE the
+      // arrow line so the line doesn't strike through the text.
+      // In solver coords this means anchoring at (midX - aboveGap,
+      // midY): solver x maps to final y, so a smaller solver x is
+      // higher up in the final SVG.
+      x = midX - aboveGap;
+      y = (typeof centerY === "number") ? centerY : midY;
+      anchor = "middle";
+      baseline = "auto";
+    }
+  } else if (isHorizontal) {
     x = midX;
     y = midY - 6;
     anchor = "middle";
@@ -1494,14 +1724,21 @@ function arrowLabelSvg(arrowPath, label, side, centerY) {
     baseline = "middle";
   }
 
-  const startDy = isHorizontal
+  // Stack lines upward (last line at the baseline) when the label sits
+  // ABOVE the arrow line so the bottom of the text clears the arrow,
+  // otherwise centre the lines symmetrically around the anchor.
+  const aboveArrow = isHorizontal || (isVertical && !isHorizontal);
+  const startDy = aboveArrow
     ? -(lines.length - 1) * lineH
     : -(lines.length - 1) * lineH / 2;
   const tspans = lines.map((ln, i) => {
     const dy = i === 0 ? startDy : lineH;
     return `<tspan x="${x}" dy="${dy}">${escXml(ln)}</tspan>`;
   }).join("");
-  return `<text x="${x}" y="${y}" text-anchor="${anchor}" dominant-baseline="${baseline}" font-size="${fontSize}" fill="#475569" font-style="italic">${tspans}</text>`;
+  // Match the diagram's parent transposition with a local counter-
+  // transposition around the text's anchor so the label reads normally.
+  const xform = isVertical ? ` transform="matrix(0 1 1 0 ${x - y} ${y - x})"` : "";
+  return `<text x="${x}" y="${y}" text-anchor="${anchor}" dominant-baseline="${baseline}" font-size="${fontSize}" fill="#475569" font-style="italic"${xform}>${tspans}</text>`;
 }
 
 function wrap(text, maxChars) {
@@ -1548,6 +1785,7 @@ function doRender() {
   let model;
   try {
     model = parse(src);
+    model.orientation = currentOrientation;
     solveLayout(model);
   } catch (e) {
     diagram.innerHTML = `<div class="error">Layout error: ${escXml(e.message)}</div>`;
@@ -1640,6 +1878,35 @@ function zoomAt(newZoom, cx, cy) {
 document.getElementById("zoom-in").addEventListener("click", () => setZoom(currentZoom + ZOOM_STEP));
 document.getElementById("zoom-out").addEventListener("click", () => setZoom(currentZoom - ZOOM_STEP));
 document.getElementById("zoom-reset").addEventListener("click", () => setZoom(1.0));
+
+// ---------- orientation ----------
+const ORIENT_STORAGE_KEY = "swimlane-studio-orientation";
+let currentOrientation = (() => {
+  try {
+    const v = localStorage.getItem(ORIENT_STORAGE_KEY);
+    return v === "vertical" ? "vertical" : "horizontal";
+  } catch { return "horizontal"; }
+})();
+const orientBtnH = document.getElementById("orient-h");
+const orientBtnV = document.getElementById("orient-v");
+function applyOrientationUI() {
+  const v = currentOrientation === "vertical";
+  orientBtnH.classList.toggle("active", !v);
+  orientBtnV.classList.toggle("active", v);
+  orientBtnH.setAttribute("aria-checked", String(!v));
+  orientBtnV.setAttribute("aria-checked", String(v));
+}
+function setOrientation(o) {
+  if (o !== "horizontal" && o !== "vertical") return;
+  if (o === currentOrientation) return;
+  currentOrientation = o;
+  try { localStorage.setItem(ORIENT_STORAGE_KEY, o); } catch {}
+  applyOrientationUI();
+  doRender();
+}
+applyOrientationUI();
+orientBtnH.addEventListener("click", () => setOrientation("horizontal"));
+orientBtnV.addEventListener("click", () => setOrientation("vertical"));
 
 // Fit zoom: compute the largest zoom factor that fits the diagram inside
 // the visible diagram-wrap viewport in both dimensions. Honours a small
