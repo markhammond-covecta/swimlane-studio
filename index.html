@@ -124,6 +124,25 @@
     background: var(--panel);
   }
 
+  /* Source collapsed: shrink the editor pane to nothing but keep the
+     resizer handle visible so it can be dragged back out (or
+     double-clicked to restore). The stored --editor-w is left intact, so
+     restoring returns to the previous width. */
+  body.source-collapsed main {
+    grid-template-columns: 0 14px minmax(0, 1fr);
+  }
+  /* Keep the pane as a grid item (display:none would reflow the remaining
+     columns) but clip it to nothing. */
+  body.source-collapsed > main > .pane:first-child {
+    overflow: hidden;
+  }
+  /* The collapsed handle sits against the window edge, so give it a wider
+     hit area and a clearer grip to avoid grabbing the window border. */
+  body.source-collapsed #resizer::before {
+    width: 4px;
+    height: 44px;
+  }
+
   .resizer {
     background: var(--line);
     cursor: col-resize;
@@ -426,6 +445,9 @@
     main {
       grid-template-columns: 1fr;
       grid-template-rows: var(--editor-h, 1fr) 6px minmax(0, 1fr);
+    }
+    body.source-collapsed main {
+      grid-template-rows: 0 14px minmax(0, 1fr);
     }
     .resizer { cursor: row-resize; }
     .resizer::before { width: 32px; height: 2px; }
@@ -2375,6 +2397,21 @@ function flashStatus(msg) {
 
   const SPLIT_X_KEY = "swimlane-studio-split-x";
   const SPLIT_Y_KEY = "swimlane-studio-split-y";
+  const COLLAPSE_KEY = "swimlane-studio-source-collapsed";
+
+  function isCollapsed() {
+    return document.body.classList.contains("source-collapsed");
+  }
+  function setCollapsed(collapsed, persist = true) {
+    document.body.classList.toggle("source-collapsed", collapsed);
+    resizer.setAttribute(
+      "aria-label",
+      collapsed ? "Show source pane (drag or double-click)" : "Resize panes"
+    );
+    if (persist) {
+      try { localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0"); } catch {}
+    }
+  }
 
   // Drag bookkeeping. We support pointer events for mouse and touch alike.
   let active = false;
@@ -2420,20 +2457,40 @@ function flashStatus(msg) {
     }
   } catch {}
 
+  // Restore collapsed state without re-persisting it.
+  try {
+    if (localStorage.getItem(COLLAPSE_KEY) === "1") setCollapsed(true, false);
+  } catch {}
+
   resizer.addEventListener("pointerdown", e => {
     e.preventDefault();
     resizer.setPointerCapture(e.pointerId);
     axis = isHorizontalLayout() ? "y" : "x";
     startPos = axis === "x" ? e.clientX : e.clientY;
-    startSize = currentEditorSize();
+    // When collapsed, drag grows the pane from the handle (size 0) rather
+    // than from its hidden previous width.
+    startSize = isCollapsed() ? 0 : currentEditorSize();
     active = true;
     document.body.classList.add("resizing");
     resizer.classList.add("dragging");
   });
+  // Dragging the pane narrower than this snaps it fully closed, so the
+  // handle can be pulled all the way to the edge instead of stopping at
+  // the 180px minimum.
+  const COLLAPSE_THRESHOLD = 100;
   resizer.addEventListener("pointermove", e => {
     if (!active) return;
     const cur = axis === "x" ? e.clientX : e.clientY;
-    setEditorSize(startSize + (cur - startPos));
+    const delta = cur - startPos;
+    // Ignore the stray micro-movement of a double-click while collapsed.
+    if (isCollapsed() && Math.abs(delta) <= 3) return;
+    const desired = startSize + delta;
+    if (desired < COLLAPSE_THRESHOLD) {
+      if (!isCollapsed()) setCollapsed(true);
+    } else {
+      if (isCollapsed()) setCollapsed(false);
+      setEditorSize(desired);
+    }
   });
   function endDrag(e) {
     if (!active) return;
@@ -2456,17 +2513,14 @@ function flashStatus(msg) {
     const delta = stepKeys[e.key];
     if (delta === undefined) return;
     e.preventDefault();
+    if (isCollapsed()) setCollapsed(false);
     setEditorSize(currentEditorSize() + delta);
   });
 
-  // Double-click resets the split to the default.
+  // Double-click toggles: fully retract the source pane, or restore it to
+  // its previous width. The handle stays visible either way.
   resizer.addEventListener("dblclick", () => {
-    mainEl.style.removeProperty("--editor-w");
-    mainEl.style.removeProperty("--editor-h");
-    try {
-      localStorage.removeItem(SPLIT_X_KEY);
-      localStorage.removeItem(SPLIT_Y_KEY);
-    } catch {}
+    setCollapsed(!isCollapsed());
   });
 })();
 
