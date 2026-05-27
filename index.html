@@ -467,6 +467,7 @@
       <button id="copy-png">Copy PNG</button>
       <button id="download-svg">Download SVG</button>
       <button id="download-png">Download PNG</button>
+      <button id="download-pdf">Download PDF</button>
     </div>
   </header>
 
@@ -483,7 +484,7 @@
       <div class="source-actions">
         <button id="new-button" title="Start a new diagram">New</button>
         <button id="load-button" title="Load a .txt file">Load</button>
-        <button id="save-button" title="Save the current diagram source to a .txt file">Save</button>
+        <button id="save-button" title="Save the diagram source to a .txt file (re-saves to the same file without re-prompting)">Save</button>
       </div>
     </section>
     <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" aria-label="Resize panes" tabindex="0"></div>
@@ -2350,6 +2351,92 @@ document.getElementById("download-png").addEventListener("click", async () => {
   }
 });
 
+// Build a single-page PDF wrapping the rasterised diagram. We embed a JPEG
+// via /DCTDecode and hand-write the (tiny, fixed) object table, which keeps
+// the app self-contained — no PDF library or CDN dependency.
+function buildImagePdf(jpeg, pxW, pxH, ptW, ptH) {
+  const enc = new TextEncoder();
+  const parts = [];
+  let length = 0;
+  const push = data => {
+    const bytes = typeof data === "string" ? enc.encode(data) : data;
+    parts.push(bytes);
+    length += bytes.length;
+  };
+  const W = Math.round(ptW), H = Math.round(ptH);
+  const offset = [];
+  const obj = (n, body) => { offset[n] = length; push(n + " 0 obj\n" + body + "\nendobj\n"); };
+
+  push("%PDF-1.4\n");
+  obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+  obj(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  obj(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + W + " " + H +
+        "] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>");
+  // Image XObject: header, then raw JPEG bytes as the stream.
+  offset[4] = length;
+  push("4 0 obj\n<< /Type /XObject /Subtype /Image /Width " + pxW + " /Height " + pxH +
+       " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " +
+       jpeg.length + " >>\nstream\n");
+  push(jpeg);
+  push("\nendstream\nendobj\n");
+  // Content stream: scale the unit image to fill the page.
+  const content = "q " + W + " 0 0 " + H + " 0 0 cm /Im0 Do Q\n";
+  obj(5, "<< /Length " + content.length + " >>\nstream\n" + content + "endstream");
+
+  const xrefOffset = length;
+  const count = 6; // objects 0..5
+  let xref = "xref\n0 " + count + "\n0000000000 65535 f \n";
+  for (let i = 1; i < count; i++) xref += String(offset[i]).padStart(10, "0") + " 00000 n \n";
+  push(xref);
+  push("trailer\n<< /Size " + count + " /Root 1 0 R >>\nstartxref\n" + xrefOffset + "\n%%EOF\n");
+
+  const out = new Uint8Array(length);
+  let pos = 0;
+  for (const p of parts) { out.set(p, pos); pos += p.length; }
+  return new Blob([out], { type: "application/pdf" });
+}
+
+async function currentPdfBlob(scale = 2) {
+  const svg = diagram.querySelector("svg");
+  if (!svg) return null;
+  const xml = currentSvgXml();
+  if (!xml) return null;
+  const w = parseFloat(svg.getAttribute("width")) || svg.viewBox.baseVal.width;
+  const h = parseFloat(svg.getAttribute("height")) || svg.viewBox.baseVal.height;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(w * scale);
+  canvas.height = Math.ceil(h * scale);
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const svgBlob = new Blob([xml], { type: "image/svg+xml;charset=utf-8" });
+  const svgUrl = URL.createObjectURL(svgBlob);
+  try {
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = svgUrl;
+    });
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  } finally {
+    URL.revokeObjectURL(svgUrl);
+  }
+  const jpegBlob = await new Promise(r => canvas.toBlob(r, "image/jpeg", 0.92));
+  if (!jpegBlob) return null;
+  const jpeg = new Uint8Array(await jpegBlob.arrayBuffer());
+  return buildImagePdf(jpeg, canvas.width, canvas.height, w, h);
+}
+
+document.getElementById("download-pdf").addEventListener("click", async () => {
+  try {
+    const blob = await currentPdfBlob();
+    if (blob) triggerDownload(blob, "swimlane.pdf");
+  } catch (e) {
+    flashStatus("PDF export failed");
+  }
+});
+
 document.getElementById("copy-svg").addEventListener("click", async (e) => {
   const btn = e.currentTarget;
   const xml = currentSvgXml();
@@ -2553,6 +2640,50 @@ function markSaved() {
   try { localStorage.setItem(SAVE_STATE_KEY, lastSavedContent); } catch {}
 }
 
+// ---------- file handle reuse ----------
+// Once the user has picked a file (via Save or Load), keep its handle so
+// subsequent saves overwrite it silently — no picker. FileSystemFileHandle
+// is structured-cloneable, so we stash it in IndexedDB to survive reloads
+// (including the dev hot-reload). Chromium-only; elsewhere Save falls back
+// to a plain download. The first save after a reload may show a one-time
+// permission prompt, then stays silent.
+let fileHandle = null;
+const HANDLE_DB = "swimlane-studio";
+const HANDLE_STORE = "handles";
+const HANDLE_KEY = "current-file";
+function idbHandle(mode, run) {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) { resolve(undefined); return; }
+    const open = indexedDB.open(HANDLE_DB, 1);
+    open.onupgradeneeded = () => open.result.createObjectStore(HANDLE_STORE);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction(HANDLE_STORE, mode);
+      const req = run(tx.objectStore(HANDLE_STORE));
+      tx.oncomplete = () => { db.close(); resolve(req && req.result); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+    };
+  });
+}
+const idbGetHandle = () => idbHandle("readonly", s => s.get(HANDLE_KEY)).catch(() => undefined);
+const idbSetHandle = h => idbHandle("readwrite", s => s.put(h, HANDLE_KEY)).catch(() => {});
+const idbClearHandle = () => idbHandle("readwrite", s => s.delete(HANDLE_KEY)).catch(() => {});
+(async () => { try { fileHandle = (await idbGetHandle()) || null; } catch {} })();
+
+// Confirm we still hold (or can re-request) read-write access to a handle.
+async function ensureWritable(handle) {
+  if (!handle.queryPermission) return true;
+  const opts = { mode: "readwrite" };
+  if ((await handle.queryPermission(opts)) === "granted") return true;
+  if ((await handle.requestPermission(opts)) === "granted") return true;
+  return false;
+}
+function setFileHandle(handle) {
+  fileHandle = handle || null;
+  if (handle) idbSetHandle(handle); else idbClearHandle();
+}
+
 const loadInput = document.createElement("input");
 loadInput.type = "file";
 loadInput.accept = ".txt,text/plain";
@@ -2562,12 +2693,31 @@ document.body.appendChild(loadInput);
 document.getElementById("new-button").addEventListener("click", () => {
   if (isDirty() && !confirm("Discard unsaved changes and start a new diagram?")) return;
   editor.value = "";
+  setFileHandle(null); // a fresh diagram is not tied to any file yet
   markSaved();
   editor.dispatchEvent(new Event("input"));
 });
 
-document.getElementById("load-button").addEventListener("click", () => {
+document.getElementById("load-button").addEventListener("click", async () => {
   if (isDirty() && !confirm("Discard unsaved changes and load a different diagram?")) return;
+  // Prefer the File System Access API so the opened file's handle is kept,
+  // letting later saves overwrite it silently.
+  if (window.showOpenFilePicker) {
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description: "Text file", accept: { "text/plain": [".txt"] } }],
+      });
+      const file = await handle.getFile();
+      editor.value = await file.text();
+      setFileHandle(handle);
+      markSaved();
+      editor.dispatchEvent(new Event("input"));
+      flashStatus(`Loaded ${file.name}`);
+    } catch (e) {
+      if (e && e.name !== "AbortError") flashStatus("Load failed");
+    }
+    return;
+  }
   // Resetting value lets the same file be reselected and fire change.
   loadInput.value = "";
   loadInput.click();
@@ -2579,6 +2729,7 @@ loadInput.addEventListener("change", async () => {
   try {
     const text = await file.text();
     editor.value = text;
+    setFileHandle(null); // no handle from the input fallback; Save will prompt
     markSaved();
     editor.dispatchEvent(new Event("input"));
     flashStatus(`Loaded ${file.name}`);
@@ -2589,19 +2740,25 @@ loadInput.addEventListener("change", async () => {
 
 document.getElementById("save-button").addEventListener("click", async () => {
   const text = editor.value;
-  // Prefer the File System Access API when available so the user picks
-  // a real save location; fall back to a download otherwise.
+  // Prefer the File System Access API. Re-use the retained handle for a
+  // silent overwrite; only show the picker when there's no usable handle.
+  // Fall back to a plain download where the API is unavailable.
   if (window.showSaveFilePicker) {
     try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: "swimlane.txt",
-        types: [{ description: "Text file", accept: { "text/plain": [".txt"] } }],
-      });
+      let handle = fileHandle;
+      if (handle && !(await ensureWritable(handle))) handle = null;
+      if (!handle) {
+        handle = await window.showSaveFilePicker({
+          suggestedName: "swimlane.txt",
+          types: [{ description: "Text file", accept: { "text/plain": [".txt"] } }],
+        });
+      }
       const writable = await handle.createWritable();
       await writable.write(text);
       await writable.close();
+      setFileHandle(handle);
       markSaved();
-      flashStatus("Saved");
+      flashStatus(handle.name ? `Saved ${handle.name}` : "Saved");
     } catch (e) {
       if (e && e.name !== "AbortError") flashStatus("Save failed");
     }
