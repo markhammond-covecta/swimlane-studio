@@ -1,0 +1,84 @@
+#!/usr/bin/env node
+// Smoke test: spawn server.js over stdio via the MCP client SDK and exercise
+// every tool. Run with `node smoke.js` (or `npm run smoke`).
+
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import fs from "node:fs/promises";
+import os from "node:os";
+
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const SOURCE = `title: Login flow
+User -> Browser: Enter search <string>
+Browser -> Server: Send request <http POST>
+Server --> Browser: Send response <html>
+Browser -> Browser: Render HTML
+Browser -> User: Display output
+User: Read output`;
+
+let failures = 0;
+const check = (cond, msg) => {
+  console.log(`${cond ? "  ok  " : " FAIL "} ${msg}`);
+  if (!cond) failures++;
+};
+
+const transport = new StdioClientTransport({
+  command: process.execPath,
+  args: [path.join(__dirname, "server.js")],
+});
+const client = new Client({ name: "smoke", version: "0.0.0" });
+await client.connect(transport);
+
+const { tools } = await client.listTools();
+console.log("Tools:", tools.map((t) => t.name).join(", "));
+check(tools.length === 3, "exposes 3 tools");
+
+// 1. swimlane_syntax
+const syn = await client.callTool({ name: "swimlane_syntax", arguments: {} });
+check(/Swimlane DSL/.test(syn.content[0].text), "swimlane_syntax returns the cheat-sheet");
+
+// 2. validate_swimlane (good + bad)
+const okv = await client.callTool({ name: "validate_swimlane", arguments: { source: SOURCE } });
+check(okv.structuredContent.ok === true, "validate: clean source ok");
+check(okv.structuredContent.lanes.join(",") === "User,Browser,Server", "validate: lanes detected in order");
+
+const badv = await client.callTool({ name: "validate_swimlane", arguments: { source: "this is nonsense ((" } });
+check(badv.isError === true, "validate: nonsense flagged as error");
+
+// 3. render svg
+const svg = await client.callTool({ name: "render_swimlane", arguments: { source: SOURCE, format: "svg" } });
+const svgText = svg.content.find((c) => c.type === "text" && /<svg/.test(c.text));
+check(!!svgText, "render svg: returns SVG text");
+check(svg.structuredContent.svg?.width > 0, "render svg: reports width");
+
+// 4. render png
+const png = await client.callTool({ name: "render_swimlane", arguments: { source: SOURCE, format: "png", scale: 2 } });
+const img = png.content.find((c) => c.type === "image");
+check(!!img && img.mimeType === "image/png", "render png: returns PNG image");
+check(img && Buffer.from(img.data, "base64").length > 1000, "render png: non-trivial PNG bytes");
+
+// 5. render ascii
+const ascii = await client.callTool({ name: "render_swimlane", arguments: { source: SOURCE, format: "ascii" } });
+const asciiText = ascii.content.find((c) => c.type === "text" && /[┌┐└┘│─]/.test(c.text));
+check(!!asciiText, "render ascii: returns box-drawing art");
+
+// 6. render all + save to disk
+const dir = await fs.mkdtemp(path.join(os.tmpdir(), "swimlane-"));
+const base = path.join(dir, "diagram");
+const all = await client.callTool({ name: "render_swimlane", arguments: { source: SOURCE, format: "all", save_path: base } });
+const wrote = all.structuredContent.written || [];
+check(wrote.length === 3, "render all: wrote 3 files");
+for (const ext of ["svg", "png", "txt"]) {
+  const p = `${base}.${ext}`;
+  const stat = await fs.stat(p).catch(() => null);
+  check(stat && stat.size > 0, `render all: ${ext} written (${stat ? stat.size : 0} bytes)`);
+}
+await fs.rm(dir, { recursive: true, force: true });
+
+await client.close();
+console.log(failures ? `\n${failures} FAILURE(S)` : "\nAll smoke checks passed.");
+process.exit(failures ? 1 : 0);

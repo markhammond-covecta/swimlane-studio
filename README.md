@@ -16,12 +16,14 @@ python3 -m http.server 8765
 open http://localhost:8765/index.html
 ```
 
-That's it — `index.html` is fully self-contained (no build step, no
-external libraries). The page polls its own `Last-Modified` header
-every ~1.5s and reloads itself when the file changes on disk, so
-editing the file in another tool gives you a live preview. The editor
-content, split-pane position, zoom level, and orientation choice all
-survive reloads via `localStorage`.
+That's it — no build step and no external libraries. `index.html` loads
+the diagram engine from `lib/swimlane-core.js` (a plain ES module, also
+served by the same static server), so both files must sit together. The
+page polls the `Last-Modified` header of `index.html` **and**
+`lib/swimlane-core.js` every ~1.5s and reloads itself when either
+changes on disk, so editing in another tool gives you a live preview.
+The editor content, split-pane position, zoom level, and orientation
+choice all survive reloads via `localStorage`.
 
 ## Syntax
 
@@ -154,17 +156,70 @@ the tab with unsaved edits.
   horizontally and vertically.
 - **Esc** closes the Help modal.
 
+## MCP server
+
+`server/` is a local [Model Context Protocol](https://modelcontextprotocol.io)
+server that renders diagrams from the same DSL, reusing the exact
+`parse → solveLayout → render` pipeline from `lib/swimlane-core.js`. It
+runs over **stdio** — the MCP client spawns `node server.js` on demand and
+talks to it over stdin/stdout; nothing listens on a network socket and
+nothing is left running.
+
+```sh
+cd server && npm install        # @modelcontextprotocol/sdk, @resvg/resvg-js, zod
+npm run smoke                   # spawns the server and exercises every tool
+```
+
+Register it with Claude Code (single machine, stdio):
+
+```sh
+claude mcp add swimlane -- node /absolute/path/to/swimlane/server/server.js
+```
+
+### Tools
+
+| Tool | Input | Output |
+| --- | --- | --- |
+| `render_swimlane` | `source`, `orientation?` (`horizontal`/`vertical`), `format?` (`svg`/`png`/`ascii`/`all`), `scale?`, `save_path?` | SVG text, a PNG image, ASCII art, or all three; optionally written to disk. |
+| `validate_swimlane` | `source` | Detected lanes (in order), message/note/section counts, and parse errors — a cheap syntax check before rendering. |
+| `swimlane_syntax` | — | The DSL cheat-sheet. |
+
+PNG is rasterised from the SVG with `@resvg/resvg-js`. ASCII art is a
+separate fixed-grid renderer (`renderAscii`) that draws box-drawing
+characters off the logical lane/column model, so connectors align exactly;
+ASCII output is always laid out horizontally.
+
+The server also advertises a compact syntax primer in its MCP
+`instructions`, so MCP clients without skill support can still author valid
+diagrams.
+
+## Skill
+
+`.claude/skills/swimlane/` wraps the server for Claude Code. The skill
+carries the full DSL reference and worked examples and triggers on requests
+to draw/generate/export a swimlane or sequence diagram, then drives the
+`mcp__swimlane__*` tools. The split is deliberate: the **skill** is the
+knowledge + workflow layer for Claude Code, while the **server** is the
+self-contained rendering capability for any MCP client.
+
 ## Project layout
 
-Everything is in `index.html`. The file is structured as:
-
-| Section | Responsibility |
+| Path | Responsibility |
 | --- | --- |
-| `<style>` | Theme, pane layout, resizer, zoom and orientation toggles, help modal. |
+| `lib/swimlane-core.js` | The framework-free, DOM-optional diagram engine shared by the web app and the MCP server. Exports `parse`, `solveLayout`, `render`, `renderAscii`, `wrap`, and friends. `measureTextPx` falls back to a font-size-aware estimate when no canvas is available (i.e. under Node). |
+| `index.html` | The single-page app: `<style>` theme/panes/toggles/help modal, plus the driver that imports the engine and hooks it to the editor, hot-reload, persistence, zoom, orientation, New/Load/Save, and exports. |
+| `server/server.js` | The stdio MCP server (`render_swimlane`, `validate_swimlane`, `swimlane_syntax`). |
+| `server/smoke.js` | End-to-end smoke test that spawns the server over stdio and calls every tool. |
+| `.claude/skills/swimlane/` | The Claude Code skill wrapping the server. |
+
+Inside `lib/swimlane-core.js`:
+
+| Function | Responsibility |
+| --- | --- |
 | `parse(source)` | Tokenises the DSL into events + lane order + sections. |
 | `solveLayout(model)` | Phase 1 places boxes (chained columns, counter-back break, move-right rules). Phase 1.5 computes per-column right margins for long horizontal captions and builds `colCenters`. Phase 2 computes each arrow as a polyline using stored box dimensions (which swap in vertical orientation so the rendered boxes stay landscape). |
 | `render(model)` | Emits the SVG. In vertical mode it wraps the content in a transposition group and counter-transposes text via `matrix(0 1 1 0 …)` so labels stay readable. Includes `polylineToPath` for rounded elbows and `arrowLabelSvg` for arrow captions. |
-| `doRender()` / drivers | Hooks the editor to the solver, manages hot-reload, source persistence, zoom (including ctrl/cmd-wheel and touch pinch), orientation toggle, New/Load/Save, the Help modal, and exports. |
+| `renderAscii(model)` | Emits a fixed-grid ASCII rendering, tracking line cells as Up/Down/Left/Right bitmasks so box and arrow junctions resolve to the correct box-drawing glyph. |
 
 ## License
 

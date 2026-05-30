@@ -1,0 +1,19 @@
+{
+  "name": "swimlane-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server that renders swimlane diagrams (SVG, PNG, ASCII) from the Swimlane Studio DSL.",
+  "bin": {
+    "swimlane-mcp": "server.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "smoke": "node smoke.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@resvg/resvg-js": "^2.6.2",
+    "zod": "^3.23.8"
+  }
+}
