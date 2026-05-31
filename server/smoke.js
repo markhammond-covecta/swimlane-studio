@@ -37,6 +37,17 @@ const { tools } = await client.listTools();
 console.log("Tools:", tools.map((t) => t.name).join(", "));
 check(tools.length === 3, "exposes 3 tools");
 
+// MCP App wiring: render_swimlane references the UI resource, which lists and
+// reads as a self-contained HTML view with the MCP App MIME type.
+const renderTool = tools.find((t) => t.name === "render_swimlane");
+check(renderTool?._meta?.ui?.resourceUri === "ui://swimlane/app.html", "render_swimlane carries ui.resourceUri meta");
+const { resources } = await client.listResources();
+const uiRes = resources.find((r) => r.uri === "ui://swimlane/app.html");
+check(uiRes?.mimeType === "text/html;profile=mcp-app", "UI resource listed with mcp-app MIME type");
+const uiRead = await client.readResource({ uri: "ui://swimlane/app.html" });
+const uiHtml = uiRead.contents?.[0]?.text || "";
+check(uiHtml.includes("<script>") && !/src="https?:/.test(uiHtml), "UI resource is self-contained HTML");
+
 // 1. swimlane_syntax
 const syn = await client.callTool({ name: "swimlane_syntax", arguments: {} });
 check(/Swimlane DSL/.test(syn.content[0].text), "swimlane_syntax returns the cheat-sheet");
@@ -79,6 +90,12 @@ for (const ext of ["svg", "png", "txt"]) {
   check(stat && stat.size > 0, `render all: ${ext} written (${stat ? stat.size : 0} bytes)`);
 }
 await fs.rm(dir, { recursive: true, force: true });
+
+// 7. default render (no format): ASCII content blocks + SVG for the inline view
+const def = await client.callTool({ name: "render_swimlane", arguments: { source: SOURCE } });
+check(def.structuredContent.format === "ascii", "render default: format is ascii");
+check(/[┌┐└┘│─]/.test(def.content.find((c) => c.type === "text")?.text || ""), "render default: ASCII in content");
+check(/<svg/.test(def.structuredContent.svgText || ""), "render default: SVG carried for inline view");
 
 await client.close();
 console.log(failures ? `\n${failures} FAILURE(S)` : "\nAll smoke checks passed.");

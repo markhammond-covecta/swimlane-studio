@@ -18,6 +18,11 @@ import fs from "node:fs/promises";
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  registerAppTool,
+  registerAppResource,
+  RESOURCE_MIME_TYPE,
+} from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
 import { Resvg } from "@resvg/resvg-js";
 
@@ -30,12 +35,20 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Pick a default output format from the host environment. Claude Code injects
-// CLAUDECODE=1 into every subprocess it spawns; other MCP clients (Claude
-// Desktop, etc.) do not. A terminal renders text well, so default to inline
-// ASCII there; a GUI client renders images, so default to an inline PNG.
-const IN_TERMINAL = process.env.CLAUDECODE === "1";
-const DEFAULT_FORMAT = IN_TERMINAL ? "ascii" : "png";
+// MCP App: render_swimlane references this UI resource via _meta.ui.resourceUri.
+// Hosts that support MCP Apps (e.g. Claude Desktop) fetch the HTML and render it
+// in an inline iframe, handing it the tool result; the app draws the SVG. Hosts
+// that don't (e.g. a terminal) ignore the metadata and just show the tool's
+// content blocks. dist/app.html is built from app/ by `npm run build:app`.
+const UI_RESOURCE_URI = "ui://swimlane/app.html";
+const APP_HTML_PATH = path.join(__dirname, "dist", "app.html");
+
+// Default output format for the tool's *content blocks*. ASCII is the format
+// that shows inline as text on every host (a terminal prints it; the model can
+// echo it in a code block). Independently, every render also carries the SVG in
+// structuredContent.svgText so the MCP App iframe can draw the diagram visually
+// in GUI hosts. PNG/SVG remain explicit export formats (usually with save_path).
+const DEFAULT_FORMAT = "ascii";
 
 // --- DSL reference, shared between the swimlane_syntax tool and the server
 //     instructions so syntax-less MCP clients can still author diagrams. ---
@@ -70,11 +83,14 @@ const server = new McpServer(
   {
     instructions:
       `Renders swimlane / sequence-style diagrams from a line-oriented DSL.\n` +
-      `Call render_swimlane with the DSL in "source"; pick format "svg", ` +
-      `"png", "ascii", or "all". If you omit format it defaults to ` +
-      `"${DEFAULT_FORMAT}" (chosen for this host: inline ASCII in a terminal, ` +
-      `an inline PNG image in a GUI client). Use validate_swimlane to check ` +
-      `syntax cheaply, and swimlane_syntax for the full grammar.\n\n` +
+      `Call render_swimlane with the DSL in "source". In MCP App hosts (e.g. ` +
+      `Claude Desktop) the diagram is drawn inline as an interactive SVG view ` +
+      `automatically. The tool result also returns content blocks in the ` +
+      `chosen format, default "${DEFAULT_FORMAT}" — in a plain terminal, ` +
+      `reproduce that ASCII in a code block so the user sees it. Request ` +
+      `"png", "svg", or "all" to export an image/vector (usually with ` +
+      `save_path). Use validate_swimlane to check syntax cheaply, and ` +
+      `swimlane_syntax for the full grammar.\n\n` +
       SYNTAX,
   },
 );
@@ -117,14 +133,36 @@ async function writeOut(savePath, format, { svg, png, ascii }) {
   return written;
 }
 
-server.registerTool(
+// The HTML viewer resource the render tool drives in MCP App hosts.
+registerAppResource(
+  server,
+  "Swimlane diagram",
+  UI_RESOURCE_URI,
+  { description: "Inline swimlane diagram viewer." },
+  async () => ({
+    contents: [
+      {
+        uri: UI_RESOURCE_URI,
+        mimeType: RESOURCE_MIME_TYPE,
+        text: await fs.readFile(APP_HTML_PATH, "utf8"),
+        // Ask the host to grant the iframe clipboard-write so the viewer's
+        // "copy as PNG" button can place the image on the clipboard.
+        _meta: { ui: { permissions: { clipboardWrite: {} } } },
+      },
+    ],
+  }),
+);
+
+registerAppTool(
+  server,
   "render_swimlane",
   {
     title: "Render swimlane diagram",
     description:
-      "Render a swimlane diagram from the Swimlane DSL. Returns SVG text, a " +
-      "PNG image, ASCII art, or all three. Optionally writes the result to " +
-      "disk. Call swimlane_syntax if you are unsure of the DSL.",
+      "Render a swimlane diagram from the Swimlane DSL. In MCP App hosts the " +
+      "diagram is drawn inline as an interactive SVG view; the tool result " +
+      "also returns ASCII (the default), or a PNG/SVG/all export. Optionally " +
+      "writes the result to disk. Call swimlane_syntax if unsure of the DSL.",
     inputSchema: {
       source: z.string().describe("The swimlane DSL source (see swimlane_syntax)."),
       orientation: z
@@ -135,9 +173,12 @@ server.registerTool(
         .enum(["svg", "png", "ascii", "all"])
         .optional()
         .describe(
-          "Output format. 'all' returns SVG text + PNG image + ASCII. If " +
-          `omitted, defaults to '${DEFAULT_FORMAT}' for this host (ASCII in a ` +
-          "terminal, PNG in a GUI client).",
+          "Format of the returned content blocks. 'all' returns SVG text + " +
+          `PNG image + ASCII. If omitted, defaults to '${DEFAULT_FORMAT}' — ` +
+          "the format that shows inline as text on every host. (The inline " +
+          "visual view in MCP App hosts is always drawn from the SVG, " +
+          "independent of this.) Use 'png'/'svg' to export, usually with " +
+          "save_path.",
         ),
       scale: z
         .number()
@@ -153,23 +194,21 @@ server.registerTool(
           "treated as a basename and .svg/.png/.txt are written.",
         ),
     },
+    _meta: { ui: { resourceUri: UI_RESOURCE_URI } },
   },
   async ({ source, orientation, format, scale, save_path }) => {
     const fmt = format ?? DEFAULT_FORMAT;
-    const out = {};
-    let dims = null;
-
-    if (fmt === "svg" || fmt === "png" || fmt === "all") {
-      const { svg } = renderSvg(source, orientation);
-      out.svg = svg;
-      dims = svgDims(svg);
-      if (fmt === "png" || fmt === "all") out.png = svgToPng(svg, scale);
-    }
-    if (fmt === "ascii" || fmt === "all") {
-      out.ascii = renderAscii(parse(source));
-    }
-
     const parsed = parse(source);
+
+    // Always render the SVG: it backs both the inline MCP App view
+    // (structuredContent.svgText) and the 'svg'/'png'/'all' export formats.
+    const { svg } = renderSvg(source, orientation);
+    const dims = svgDims(svg);
+
+    const out = { svg };
+    if (fmt === "png" || fmt === "all") out.png = svgToPng(svg, scale);
+    if (fmt === "ascii" || fmt === "all") out.ascii = renderAscii(parse(source));
+
     const content = [];
     const structured = {
       format: fmt,
@@ -177,15 +216,12 @@ server.registerTool(
       lanes: parsed.lanes,
       events: parsed.events.length,
       parseErrors: parsed.errors,
+      svg: { ...dims },
+      // Consumed by the MCP App viewer to draw the diagram inline; also lets
+      // structuredContent-only clients recover the vector output.
+      svgText: svg,
     };
-
-    if (out.svg != null && dims) structured.svg = { ...dims };
-
-    // Carry the rendered text inside structuredContent as well. Some MCP
-    // clients surface structuredContent in preference to the content blocks,
-    // which would otherwise hide an ASCII/SVG render behind bare metadata.
     if (out.ascii != null) structured.ascii = out.ascii;
-    if (out.svg != null && fmt !== "png") structured.svgText = out.svg;
 
     if (save_path) {
       const written = await writeOut(save_path, fmt, out);
@@ -193,9 +229,10 @@ server.registerTool(
       content.push({ type: "text", text: `Wrote: ${written.join(", ")}` });
     }
 
-    if (out.ascii != null) {
-      content.push({ type: "text", text: out.ascii });
-    }
+    // Content blocks follow the requested format (what a non-app host shows).
+    // Raw SVG text is only dumped for explicit 'svg'/'all' so it never clutters
+    // the default ASCII output.
+    if (out.ascii != null) content.push({ type: "text", text: out.ascii });
     if (out.png != null) {
       content.push({
         type: "image",
@@ -203,9 +240,8 @@ server.registerTool(
         mimeType: "image/png",
       });
     }
-    if (out.svg != null && fmt !== "png") {
-      // Include raw SVG text so the client can embed/save it verbatim.
-      content.push({ type: "text", text: out.svg });
+    if (fmt === "svg" || fmt === "all") {
+      content.push({ type: "text", text: svg });
     }
     if (parsed.errors.length) {
       content.push({

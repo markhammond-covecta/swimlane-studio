@@ -14,7 +14,8 @@ lane. Time flows left-to-right (horizontal) or top-to-bottom (vertical).
 The MCP server exposes three tools (prefixed `mcp__swimlane__`):
 
 - **`render_swimlane`** — `{ source, orientation?, format?, scale?, save_path? }`
-  - `format`: `"svg"`, `"png"`, `"ascii"`, or `"all"`. **If omitted, the server picks a default from the host:** inline `ascii` when running under Claude Code (terminal), `png` otherwise (Claude Desktop / GUI clients). Pass `format` explicitly only to override that.
+  - **Inline view:** this tool is an *MCP App*. In hosts that support MCP Apps (e.g. Claude Desktop) the diagram is drawn automatically as an interactive inline SVG view — you don't do anything to trigger it; just call the tool.
+  - `format`: `"svg"`, `"png"`, `"ascii"`, or `"all"`. This controls the *content blocks* the tool returns (text the model reads / a terminal shows), **not** the inline view. **Defaults to `ascii`** — the format that shows inline as text in a plain terminal. `png`/`svg` are export formats: request them, normally with `save_path`, when the user wants an image or vector file. A returned PNG/`image` block does **not** render inline in Claude Desktop chat (only the MCP App view does), so never rely on a PNG block as the on-screen diagram.
   - `orientation`: `"horizontal"` (default) or `"vertical"`. ASCII is always horizontal.
   - `scale`: PNG raster factor (default 2).
   - `save_path`: absolute path to write to. For `"all"` it is a basename and `.svg`/`.png`/`.txt` are written.
@@ -30,12 +31,23 @@ If the server is not registered, see "Setup" at the bottom.
    performs it. **Prefer a connected flow** — see below.
 2. For anything non-trivial, call `validate_swimlane` first to confirm the
    lanes and catch unparseable lines.
-3. Call `render_swimlane` and **leave `format` unset** — the server defaults to
-   inline `ascii` in a terminal (Claude Code) and `png` in a GUI client (Claude
-   Desktop), so the right output is chosen for the host automatically. Set
-   `format` explicitly only to override: `svg` for embeddable vector text, or
-   `all` when saving every format to disk.
+3. Call `render_swimlane` and **leave `format` unset** — it defaults to `ascii`,
+   which displays inline in chat on every host. Set `format` only to export a
+   file the user asked for: `png` (raster) or `svg` (vector), normally with
+   `save_path`; `all` to write every format to disk.
 4. If the user wants a file, pass `save_path` (absolute).
+
+**Always render — never just describe.** The rendered diagram is the
+deliverable; a prose walk-through of the lanes is not a substitute and does not
+count as producing the diagram. Always call `render_swimlane`.
+
+- In an **MCP App host (Claude Desktop)** the inline SVG view appears on its
+  own once the tool runs — that *is* the diagram; you needn't echo anything.
+- In a **plain terminal (no MCP App)** reproduce the returned ASCII inside a
+  fenced ```` ``` ```` code block in your reply so it displays inline and stays
+  monospaced — don't rely on the collapsed tool-result panel.
+
+Keep any commentary short and put it after the diagram, not instead of it.
 
 ## Prefer connected flows (preferred form)
 
@@ -135,11 +147,38 @@ note Payments: PCI scope
 ## Setup
 
 The server is in `server/` of the swimlane repo and runs over stdio (no
-long-running process, no network). Register it once with:
+long-running process, no network). First install deps and build the inline-view
+bundle:
+
+```sh
+cd /Users/mark/code/swimlane/server && npm install && npm run build:app
+```
+
+`npm run build:app` produces `server/dist/app.html` — the self-contained MCP App
+viewer that hosts render inline. It is committed, so this is only needed after
+changing `server/app/`.
+
+**Claude Code** — register over the CLI:
 
 ```sh
 claude mcp add swimlane -- node /Users/mark/code/swimlane/server/server.js
 ```
 
-(Run `npm install` in `server/` first if dependencies are missing.) Tools
-then appear as `mcp__swimlane__*`.
+**Claude Desktop** — it doesn't use `claude mcp add`; add an entry to its config
+at `~/Library/Application Support/Claude/claude_desktop_config.json` (use an
+absolute `node` path, since Desktop launches without your shell `PATH`) and
+restart Desktop:
+
+```json
+{
+  "mcpServers": {
+    "swimlane": {
+      "command": "/absolute/path/to/node",
+      "args": ["/Users/mark/code/swimlane/server/server.js"]
+    }
+  }
+}
+```
+
+Tools then appear as `mcp__swimlane__*`. The inline diagram view only renders in
+hosts that support MCP Apps (Claude Desktop); elsewhere use the ASCII output.
