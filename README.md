@@ -1,6 +1,6 @@
 # Swimlane Studio
 
-A single-file SPA that renders swimlane diagrams from a swimlane-style
+A single-file SPA that renders swimlane diagrams from a concise, line-oriented
 DSL. Boxes live in their sender's lane, arrows are routed deterministically
 by a layout solver, and the whole diagram exports to SVG or PNG. The diagram
 can be flipped between horizontal swimlanes (lanes stacked top-to-bottom,
@@ -9,14 +9,19 @@ left-to-right, time flowing top-to-bottom).
 
 ![Screenshot](docs/screenshot.png)
 
-## Quick start
+## Quick start (web app)
+
+Clone the repo and serve the folder with any static file server — the web
+app has **no build step and no external libraries**:
 
 ```sh
+git clone https://github.com/markhammond-covecta/swimlane-studio.git
+cd swimlane-studio
 python3 -m http.server 8765
 open http://localhost:8765/index.html
 ```
 
-That's it — no build step and no external libraries. `index.html` loads
+That's it. `index.html` loads
 the diagram engine from `lib/swimlane-core.js` (a plain ES module, also
 served by the same static server), so both files must sit together. The
 page polls the `Last-Modified` header of `index.html` **and**
@@ -27,7 +32,7 @@ choice all survive reloads via `localStorage`.
 
 ## Syntax
 
-The DSL is a line-oriented superset of swimlane syntax. Click the
+The DSL is line-oriented. Click the
 **Help** button in the header for a quick in-app reference.
 
 | Form | Meaning |
@@ -165,16 +170,55 @@ runs over **stdio** — the MCP client spawns `node server.js` on demand and
 talks to it over stdin/stdout; nothing listens on a network socket and
 nothing is left running.
 
-```sh
-cd server && npm install        # @modelcontextprotocol/sdk, @resvg/resvg-js, zod
-npm run smoke                   # spawns the server and exercises every tool
-```
+### Install
 
-Register it with Claude Code (single machine, stdio):
+Requires **Node.js 18+**. From a clone of the repo:
 
 ```sh
-claude mcp add swimlane -- node /absolute/path/to/swimlane/server/server.js
+cd swimlane-studio/server
+npm install            # @modelcontextprotocol/sdk, @resvg/resvg-js, zod, esbuild
+npm run smoke          # spawns the server and exercises every tool (optional check)
 ```
+
+No global install and nothing to keep running — the MCP client spawns
+`node server.js` on demand.
+
+### Register with Claude Code
+
+```sh
+claude mcp add swimlane -- node /absolute/path/to/swimlane-studio/server/server.js
+```
+
+### Register with Claude Desktop / other MCP clients
+
+Add an entry to the client's MCP config (for Claude Desktop, this is
+`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "swimlane": {
+      "command": "node",
+      "args": ["/absolute/path/to/swimlane-studio/server/server.js"]
+    }
+  }
+}
+```
+
+Restart the client and the three tools below become available.
+
+### Inline interactive viewer (MCP App hosts)
+
+In hosts that support MCP Apps (e.g. Claude Desktop), `render_swimlane`
+also draws the diagram inline as an interactive SVG. That viewer is built
+into a single self-contained `dist/app.html` and is regenerated with:
+
+```sh
+npm run build:app      # bundles app/ into dist/app.html via esbuild
+```
+
+A prebuilt `dist/app.html` is committed, so this is only needed after
+editing the viewer source under `server/app/`.
 
 ### Tools
 
@@ -223,4 +267,4 @@ Inside `lib/swimlane-core.js`:
 
 ## License
 
-Private repository — no license granted.
+[MIT](LICENSE).
