@@ -14,7 +14,7 @@ lane. Time flows left-to-right (horizontal) or top-to-bottom (vertical).
 The MCP server exposes three tools (prefixed `mcp__swimlane__`):
 
 - **`render_swimlane`** — `{ source, orientation?, format?, scale?, save_path? }`
-  - `format`: `"svg"` (default), `"png"`, `"ascii"`, or `"all"`.
+  - `format`: `"svg"`, `"png"`, `"ascii"`, or `"all"`. **If omitted, the server picks a default from the host:** inline `ascii` when running under Claude Code (terminal), `png` otherwise (Claude Desktop / GUI clients). Pass `format` explicitly only to override that.
   - `orientation`: `"horizontal"` (default) or `"vertical"`. ASCII is always horizontal.
   - `scale`: PNG raster factor (default 2).
   - `save_path`: absolute path to write to. For `"all"` it is a basename and `.svg`/`.png`/`.txt` are written.
@@ -30,9 +30,11 @@ If the server is not registered, see "Setup" at the bottom.
    performs it. **Prefer a connected flow** — see below.
 2. For anything non-trivial, call `validate_swimlane` first to confirm the
    lanes and catch unparseable lines.
-3. Call `render_swimlane`. Default to `svg`; use `png` when the user wants an
-   image to drop into a doc/chat, `ascii` for inline terminal/markdown output,
-   `all` when unsure or when saving to disk.
+3. Call `render_swimlane` and **leave `format` unset** — the server defaults to
+   inline `ascii` in a terminal (Claude Code) and `png` in a GUI client (Claude
+   Desktop), so the right output is chosen for the host automatically. Set
+   `format` explicitly only to override: `svg` for embeddable vector text, or
+   `all` when saving every format to disk.
 4. If the user wants a file, pass `save_path` (absolute).
 
 ## Prefer connected flows (preferred form)

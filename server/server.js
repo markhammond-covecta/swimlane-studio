@@ -30,6 +30,13 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Pick a default output format from the host environment. Claude Code injects
+// CLAUDECODE=1 into every subprocess it spawns; other MCP clients (Claude
+// Desktop, etc.) do not. A terminal renders text well, so default to inline
+// ASCII there; a GUI client renders images, so default to an inline PNG.
+const IN_TERMINAL = process.env.CLAUDECODE === "1";
+const DEFAULT_FORMAT = IN_TERMINAL ? "ascii" : "png";
+
 // --- DSL reference, shared between the swimlane_syntax tool and the server
 //     instructions so syntax-less MCP clients can still author diagrams. ---
 const SYNTAX = `Swimlane DSL quick reference
@@ -63,8 +70,10 @@ const server = new McpServer(
   {
     instructions:
       `Renders swimlane / sequence-style diagrams from a line-oriented DSL.\n` +
-      `Call render_swimlane with the DSL in "source"; pick format "svg" ` +
-      `(default), "png", "ascii", or "all". Use validate_swimlane to check ` +
+      `Call render_swimlane with the DSL in "source"; pick format "svg", ` +
+      `"png", "ascii", or "all". If you omit format it defaults to ` +
+      `"${DEFAULT_FORMAT}" (chosen for this host: inline ASCII in a terminal, ` +
+      `an inline PNG image in a GUI client). Use validate_swimlane to check ` +
       `syntax cheaply, and swimlane_syntax for the full grammar.\n\n` +
       SYNTAX,
   },
@@ -124,8 +133,12 @@ server.registerTool(
         .describe("Lane layout. ASCII output is always horizontal."),
       format: z
         .enum(["svg", "png", "ascii", "all"])
-        .default("svg")
-        .describe("Output format. 'all' returns SVG text + PNG image + ASCII."),
+        .optional()
+        .describe(
+          "Output format. 'all' returns SVG text + PNG image + ASCII. If " +
+          `omitted, defaults to '${DEFAULT_FORMAT}' for this host (ASCII in a ` +
+          "terminal, PNG in a GUI client).",
+        ),
       scale: z
         .number()
         .min(0.25)
@@ -142,23 +155,24 @@ server.registerTool(
     },
   },
   async ({ source, orientation, format, scale, save_path }) => {
+    const fmt = format ?? DEFAULT_FORMAT;
     const out = {};
     let dims = null;
 
-    if (format === "svg" || format === "png" || format === "all") {
+    if (fmt === "svg" || fmt === "png" || fmt === "all") {
       const { svg } = renderSvg(source, orientation);
       out.svg = svg;
       dims = svgDims(svg);
-      if (format === "png" || format === "all") out.png = svgToPng(svg, scale);
+      if (fmt === "png" || fmt === "all") out.png = svgToPng(svg, scale);
     }
-    if (format === "ascii" || format === "all") {
+    if (fmt === "ascii" || fmt === "all") {
       out.ascii = renderAscii(parse(source));
     }
 
     const parsed = parse(source);
     const content = [];
     const structured = {
-      format,
+      format: fmt,
       orientation,
       lanes: parsed.lanes,
       events: parsed.events.length,
@@ -167,8 +181,14 @@ server.registerTool(
 
     if (out.svg != null && dims) structured.svg = { ...dims };
 
+    // Carry the rendered text inside structuredContent as well. Some MCP
+    // clients surface structuredContent in preference to the content blocks,
+    // which would otherwise hide an ASCII/SVG render behind bare metadata.
+    if (out.ascii != null) structured.ascii = out.ascii;
+    if (out.svg != null && fmt !== "png") structured.svgText = out.svg;
+
     if (save_path) {
-      const written = await writeOut(save_path, format, out);
+      const written = await writeOut(save_path, fmt, out);
       structured.written = written;
       content.push({ type: "text", text: `Wrote: ${written.join(", ")}` });
     }
@@ -183,7 +203,7 @@ server.registerTool(
         mimeType: "image/png",
       });
     }
-    if (out.svg != null && format !== "png") {
+    if (out.svg != null && fmt !== "png") {
       // Include raw SVG text so the client can embed/save it verbatim.
       content.push({ type: "text", text: out.svg });
     }

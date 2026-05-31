@@ -65,6 +65,7 @@ check(img && Buffer.from(img.data, "base64").length > 1000, "render png: non-tri
 const ascii = await client.callTool({ name: "render_swimlane", arguments: { source: SOURCE, format: "ascii" } });
 const asciiText = ascii.content.find((c) => c.type === "text" && /[┌┐└┘│─]/.test(c.text));
 check(!!asciiText, "render ascii: returns box-drawing art");
+check(/[┌┐└┘│─]/.test(ascii.structuredContent.ascii || ""), "render ascii: art also carried in structuredContent");
 
 // 6. render all + save to disk
 const dir = await fs.mkdtemp(path.join(os.tmpdir(), "swimlane-"));
