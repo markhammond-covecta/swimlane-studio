@@ -702,7 +702,7 @@
       <table>
         <tr><td>Click a shape</td><td>Selects its line in the source; moving the caret onto a line highlights the matching shapes.</td></tr>
         <tr><td>Double-click a lane name</td><td>Rename the lane inline. The new name replaces every reference to that lane in the source. Enter to apply, Esc to cancel.</td></tr>
-        <tr><td>Double-click a box</td><td>Edit the box caption inline. Enter to apply, Shift+Enter for a line break, Esc to cancel.</td></tr>
+        <tr><td>Double-click a box, note, or section</td><td>Edit its text inline. Enter to apply, Shift+Enter for a line break, Esc to cancel.</td></tr>
         <tr><td>Double-click the title</td><td>Edit the diagram title inline. Enter to apply, Esc to cancel.</td></tr>
         <tr><td>Undo / Redo</td><td>Step backwards or forwards through source edits with the buttons or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z.</td></tr>
         <tr><td>Lane autocomplete</td><td>Typing a lane name (line start, after an arrow, or in a <code>note</code>/<code>order</code> list) suggests existing lanes in the current diagram. &uarr;/&darr; to move, Tab to accept, Esc to dismiss.</td></tr>
@@ -1006,10 +1006,15 @@ function boxCaptionRange(raw) {
   let rest = body;
   if (tagM) { bodyStart += tagM[0].length; rest = body.slice(tagM[0].length); }
 
-  // Directives and section banners are not boxes.
-  if (/^title\s*:/i.test(rest) || /^order\s*:/i.test(rest) || /^\[\s*.+?\s*\]$/.test(rest)) return null;
+  // Directives are not editable here.
+  if (/^title\s*:/i.test(rest) || /^order\s*:/i.test(rest)) return null;
 
   let m;
+  // Section banner: [ Label ] — edit the text between the brackets.
+  if ((m = rest.match(/^(\[\s*)(.+?)(\s*\])$/))) {
+    const cs = bodyStart + m[1].length;
+    return { capStart: cs, capEnd: cs + m[2].length, colon: true };
+  }
   // note Lane(s): caption  (no arrow-label split)
   if ((m = rest.match(/^note\b(?:\s+[^:]+?)?\s*:\s*/i))) {
     return { capStart: bodyStart + m[0].length, capEnd: bodyEnd, colon: true };
