@@ -1371,15 +1371,18 @@ function acUpdate() {
   if (!seg) return acHide();
   const pfx = seg.prefix.toLowerCase();
   const seen = new Set();
-  const matches = [];
+  let matches = [];
   for (const name of currentLanes) {
     const ln = name.toLowerCase();
     if (ln === pfx || !ln.startsWith(pfx) || seen.has(name)) continue;
     seen.add(name);
     matches.push(name);
-    if (matches.length >= 8) break;
   }
   if (!matches.length) return acHide();
+  // Alphabetical (case-insensitive); sort before capping so the limit never
+  // drops an alphabetically-earlier match.
+  matches.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  matches = matches.slice(0, 8);
   acItems = matches;
   acIndex = 0;
   acPrefixLen = seg.prefix.length;
