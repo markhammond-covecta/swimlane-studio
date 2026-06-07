@@ -70,7 +70,7 @@ Boxes live in their SENDER's lane; arrows route to the target lane.
   Carol -> [1]: Retry             Loop back to the box tagged "1".
   [ Section name ]                Section banner over the columns that follow.
   note Alice: Inspect logs        Note attached to one lane.
-  note Alice, Bob: Window\\n2s      Multi-lane note (\\n = line break).
+  note Alice, Bob: Window\\n2s      Multi-lane note (\\n or /n = line break).
   # comment   // comment          Comment lines.
 
 Arrow captions: end a message with <...> to caption the arrow itself, e.g.

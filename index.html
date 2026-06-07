@@ -688,7 +688,7 @@
 
       <h3>Captions and labels</h3>
       <table>
-        <tr><td><code>caption \n more</code></td><td>Line break inside a box caption or arrow label.</td></tr>
+        <tr><td><code>caption \n more</code></td><td>Line break inside a box caption or arrow label. <code>/n</code> works too.</td></tr>
         <tr><td><code>caption &lt;arrow label&gt;</code></td><td>Trailing <code>&lt;...&gt;</code> becomes the arrow's italic side-label; the rest stays in the box.</td></tr>
       </table>
 
@@ -1055,7 +1055,7 @@ function startBoxEdit(rect, lineNo) {
   const ta = document.createElement("textarea");
   ta.className = "box-edit";
   ta.rows = 1;
-  ta.value = raw.slice(range.capStart, range.capEnd).replace(/\\n/g, "\n");
+  ta.value = raw.slice(range.capStart, range.capEnd).replace(/[\\/]n/g, "\n");
   ta.style.left = Math.round(r.left) + "px";
   ta.style.top = Math.round(r.top) + "px";
   ta.style.width = Math.max(Math.round(r.width), 60) + "px";

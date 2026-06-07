@@ -128,7 +128,7 @@ Third -> [1]: Lemon
 ```
 
 **Wrapping:** box and arrow captions wrap automatically; you don't need to
-insert line breaks except in notes (`\n`).
+insert line breaks except in notes (`\n`, or `/n` — both work).
 
 ## Worked examples
 
