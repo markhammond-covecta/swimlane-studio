@@ -99,6 +99,8 @@ far more readable than scattered arrowheads.
 | `Bob >-> Alice: Reply` | Counter-pair reply that shares a column with the prior `Alice -> Bob`. |
 | `Alice <: Done` | Backward-only terminal box (incoming link, no outgoing trail). |
 | `Alice: Read output` | Standalone box — no arrow of its own. |
+| `[1] Alice -> Bob: Start` | Tag this box `1` (free-form name; not drawn). |
+| `Carol -> [1]: Retry` | Loop back: backward arc to the box tagged `1`. |
 | `[ Section name ]` | Section banner spanning the columns that follow. |
 | `note Alice: Inspect logs` | Note attached to one lane. |
 | `note Alice, Bob: Window\n2s` | Multi-lane note (`\n` = line break). |
@@ -112,6 +114,18 @@ Browser -> Server: Send request <http POST>
 ```
 
 renders a "Send request" box with "http POST" beside the arrow.
+
+**Loop-backs:** prefix a line with `[tag] ` to label the box it creates,
+then target `[tag]` later to draw a backward arc to that box (the tag is
+never displayed). A same-lane loop stays within its lane; a cross-lane loop
+routes through a channel above the lanes. The arc never crosses a box, and
+breaks where it crosses another connector so it reads as passing under.
+
+```
+[1] First -> Second: Apple
+Second -> Third: Orange
+Third -> [1]: Lemon
+```
 
 **Wrapping:** box and arrow captions wrap automatically; you don't need to
 insert line breaks except in notes (`\n`).

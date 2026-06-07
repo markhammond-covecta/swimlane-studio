@@ -64,6 +64,16 @@
     font-size: 12px;
     color: var(--ink-soft);
   }
+  header .file-name {
+    font-size: 13px;
+    color: var(--ink-soft);
+    font-weight: 500;
+  }
+  header .file-name::before {
+    content: "·";
+    margin-right: 8px;
+    color: var(--line);
+  }
   header .actions { display: flex; gap: 8px; }
   header button, header select, .source-actions button {
     font-family: var(--sans);
@@ -80,6 +90,47 @@
     background: #f3f4f6;
     border-color: #c8ccd2;
   }
+  header button:disabled, .source-actions button:disabled,
+  header button:disabled:hover, .source-actions button:disabled:hover {
+    opacity: 0.4;
+    cursor: default;
+    background: var(--panel);
+    border-color: var(--line);
+  }
+  /* Undo / redo icon buttons in the Source pane header. */
+  .header-tools {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: normal;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .header-tools button.icon-button {
+    font-family: var(--sans);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 7px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    border-radius: 4px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .header-tools button.icon-button:hover {
+    background: #f3f4f6;
+    border-color: #c8ccd2;
+  }
+  .header-tools button.icon-button:disabled,
+  .header-tools button.icon-button:disabled:hover {
+    opacity: 0.4;
+    cursor: default;
+    background: var(--panel);
+    border-color: var(--line);
+  }
+  .header-tools button.icon-button svg { display: block; }
   /* Brief success flash applied to copy/save buttons after a successful
      action so the user gets immediate visual confirmation. */
   header button.flash-ok, .source-actions button.flash-ok {
@@ -341,6 +392,57 @@
     fill: #854d0e;
   }
 
+  /* Lane captions are double-clickable to rename the lane everywhere. */
+  #diagram svg text[data-lane] { cursor: text; }
+  .lane-edit {
+    position: fixed;
+    z-index: 50;
+    margin: 0;
+    padding: 1px 5px;
+    font: 600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: #1f2937;
+    background: #fff;
+    border: 1.5px solid #3b82f6;
+    border-radius: 5px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+    outline: none;
+  }
+  /* Inline editor for the diagram title, opened by double-clicking it. */
+  .title-edit {
+    position: fixed;
+    z-index: 50;
+    margin: 0;
+    padding: 1px 8px;
+    font: 600 18px var(--sans);
+    text-align: center;
+    color: #111827;
+    background: #fff;
+    border: 1.5px solid #3b82f6;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+    outline: none;
+  }
+  /* Inline editor for a box caption, opened by double-clicking a box.
+     Positioned (in JS) over the box; multi-line because captions may
+     contain \n line breaks. */
+  .box-edit {
+    position: fixed;
+    z-index: 50;
+    margin: 0;
+    padding: 4px 6px;
+    font: 500 12px var(--sans);
+    line-height: 1.25;
+    text-align: center;
+    color: #1e3a8a;
+    background: #fff;
+    border: 1.5px solid #3b82f6;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+    outline: none;
+    resize: none;
+    overflow: hidden;
+  }
+
   .error {
     margin: 16px;
     padding: 12px 14px;
@@ -460,6 +562,7 @@
   <header>
     <div class="brand">
       <h1>Swimlane Studio</h1>
+      <span id="file-name" class="file-name" hidden></span>
     </div>
     <div class="actions">
       <button id="help-button" title="Show syntax help">Help</button>
@@ -476,7 +579,15 @@
     <section class="pane">
       <div class="pane-header">
         <span>Source</span>
-        <span id="status"></span>
+        <span class="header-tools">
+          <span id="status"></span>
+          <button id="undo-button" class="icon-button" title="Undo (Ctrl/Cmd+Z)" aria-label="Undo" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10H9"/></svg>
+          </button>
+          <button id="redo-button" class="icon-button" title="Redo (Ctrl/Cmd+Shift+Z)" aria-label="Redo" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h6"/></svg>
+          </button>
+        </span>
       </div>
       <div class="editor-stack">
         <pre id="editor-highlight" aria-hidden="true"></pre>
@@ -485,7 +596,8 @@
       <div class="source-actions">
         <button id="new-button" title="Start a new diagram">New</button>
         <button id="load-button" title="Load a .txt file">Load</button>
-        <button id="save-button" title="Save the diagram source to a .txt file (re-saves to the same file without re-prompting)">Save</button>
+        <button id="save-button" title="Save the diagram source to a .txt file (re-saves to the same file without re-prompting)" disabled>Save</button>
+        <button id="save-as-button" title="Save the diagram source to a new .txt file (always prompts for a location)">Save As</button>
       </div>
     </section>
     <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" aria-label="Resize panes" tabindex="0"></div>
@@ -524,6 +636,8 @@
         <tr><td><code>A &lt;: text</code></td><td>Backward-only box: a labelled box in lane A with just an incoming trail from the previous same-lane box.</td></tr>
         <tr><td><code>A: text</code></td><td>Standalone box: a labelled box in lane A with no arrows of its own. A preceding cross-lane arrow will still land on it.</td></tr>
         <tr><td><code>A -&gt; A: text</code></td><td>Same-lane forward link. The box sits in lane A and a horizontal arrow trails to the next same-lane box.</td></tr>
+        <tr><td><code>[1] A -&gt; B: text</code></td><td>Tag the box this line creates as <code>1</code> (any name works). The tag is never drawn; it just gives a later statement a loop-back target.</td></tr>
+        <tr><td><code>C -&gt; [1]: text</code></td><td>Loop back to the box tagged <code>1</code>: a box in lane C with a backward arc to the tagged box. A same-lane loop stays within its lane; a cross-lane loop routes through a channel above the lanes. The arc never crosses a box, and breaks where it crosses another connector.</td></tr>
       </table>
 
       <h3>Notes</h3>
@@ -550,13 +664,22 @@
         <tr><td><code># comment</code></td><td>Line comment.</td></tr>
         <tr><td><code>// comment</code></td><td>Line comment.</td></tr>
       </table>
+
+      <h3>Editing</h3>
+      <table>
+        <tr><td>Click a shape</td><td>Selects its line in the source; moving the caret onto a line highlights the matching shapes.</td></tr>
+        <tr><td>Double-click a lane name</td><td>Rename the lane inline. The new name replaces every reference to that lane in the source. Enter to apply, Esc to cancel.</td></tr>
+        <tr><td>Double-click a box</td><td>Edit the box caption inline. Enter to apply, Shift+Enter for a line break, Esc to cancel.</td></tr>
+        <tr><td>Double-click the title</td><td>Edit the diagram title inline. Enter to apply, Esc to cancel.</td></tr>
+        <tr><td>Undo / Redo</td><td>Step backwards or forwards through source edits with the buttons or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z.</td></tr>
+      </table>
     </div>
   </div>
 
 <script type="module">
 // Diagram engine lives in lib/swimlane-core.js so the MCP server can
 // share the exact same parse -> solve -> render pipeline. See README.
-import { parse, solveLayout, render, escXml, wrap } from "./lib/swimlane-core.js";
+import { parse, solveLayout, render, renameLane, escXml, wrap } from "./lib/swimlane-core.js";
 
 
 // ---------- driver ----------
@@ -565,6 +688,7 @@ const diagram = document.getElementById("diagram");
 const sizeInfo = document.getElementById("size-info");
 const status = document.getElementById("status");
 
+let currentLanes = [];
 let renderTimer = null;
 function scheduleRender() {
   clearTimeout(renderTimer);
@@ -588,17 +712,25 @@ function doRender() {
     status.textContent = "";
     return;
   }
+  currentLanes = model.lanes.slice();
   const svgString = render(model);
   diagram.innerHTML = svgString;
   const svg = diagram.querySelector("svg");
   if (svg) {
     sizeInfo.textContent = `${svg.getAttribute("width")} × ${svg.getAttribute("height")}`;
+    // Make the title double-click editable. Newer engine builds tag it
+    // with data-title directly; tag it here too so editing still works if
+    // an older engine module is cached. The title is the only 18px text.
+    if (model.title && !svg.querySelector("[data-title]")) {
+      const t = [...svg.querySelectorAll("text")].find(
+        el => el.getAttribute("font-size") === "18" && el.textContent === model.title
+      );
+      if (t) t.setAttribute("data-title", "1");
+    }
   }
   applyZoom();
   refreshSourceHighlight();
-  status.textContent = model.errors.length
-    ? `${model.errors.length} parse warning${model.errors.length === 1 ? "" : "s"}`
-    : "";
+  status.textContent = "";
   if (model.errors.length) {
     const warn = document.createElement("div");
     warn.className = "error";
@@ -606,6 +738,90 @@ function doRender() {
     diagram.appendChild(warn);
   }
 }
+
+// ---------- undo / redo ----------
+// A single source-of-truth history stack so that *every* change to the
+// source — typed edits, lane renames, box edits, New/Load — is undoable
+// from one place. Native textarea undo is bypassed (it can't see our
+// programmatic edits and would desync), so Ctrl/Cmd+Z is routed here too.
+const undoButton = document.getElementById("undo-button");
+const redoButton = document.getElementById("redo-button");
+const HISTORY_LIMIT = 200;
+let history = [];
+let histIndex = -1;
+let snapTimer = null;
+
+function updateUndoRedoButtons() {
+  undoButton.disabled = histIndex <= 0;
+  redoButton.disabled = histIndex >= history.length - 1;
+}
+function historyInit(value) {
+  history = [value];
+  histIndex = 0;
+  updateUndoRedoButtons();
+}
+// Record the current editor content as a discrete undo step. No-op when
+// it matches the latest entry, so coalesced typing and re-dispatched
+// values don't pile up duplicates.
+function snapshotNow() {
+  clearTimeout(snapTimer);
+  snapTimer = null;
+  const value = editor.value;
+  if (histIndex >= 0 && history[histIndex] === value) return;
+  history.length = histIndex + 1; // drop any redo tail
+  history.push(value);
+  if (history.length > HISTORY_LIMIT) history.shift();
+  histIndex = history.length - 1;
+  updateUndoRedoButtons();
+}
+// Typing coalesces into one step after a short pause.
+function scheduleSnapshot() {
+  clearTimeout(snapTimer);
+  snapTimer = setTimeout(snapshotNow, 400);
+}
+// Apply history[histIndex] to the editor and refresh everything, without
+// recording a new step.
+function applyHistory() {
+  editor.value = history[histIndex];
+  updateSourceHighlight();
+  try { localStorage.setItem(SRC_STORAGE_KEY, editor.value); } catch {}
+  doRender();
+  updateUndoRedoButtons();
+}
+function undo() {
+  if (snapTimer) snapshotNow(); // capture any in-flight typing first
+  if (histIndex <= 0) return;
+  histIndex--;
+  applyHistory();
+}
+function redo() {
+  if (histIndex >= history.length - 1) return;
+  histIndex++;
+  applyHistory();
+}
+// Programmatic source replacement (lane rename, box edit, New, Load):
+// swap the value, record it as one undo step, then refresh.
+function commitSourceChange(newValue) {
+  editor.value = newValue;
+  snapshotNow();
+  updateSourceHighlight();
+  try { localStorage.setItem(SRC_STORAGE_KEY, editor.value); } catch {}
+  doRender();
+}
+
+undoButton.addEventListener("click", () => { undo(); editor.focus(); });
+redoButton.addEventListener("click", () => { redo(); editor.focus(); });
+
+// Route undo/redo keys to our stack everywhere except inside the inline
+// edit fields, where native field-level undo is the right behaviour.
+document.addEventListener("keydown", e => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  const t = e.target;
+  if (t && t !== editor && (t.classList.contains("lane-edit") || t.classList.contains("box-edit"))) return;
+  const key = e.key.toLowerCase();
+  if (key === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+  else if ((key === "z" && e.shiftKey) || key === "y") { e.preventDefault(); redo(); }
+});
 
 // ---------- two-way highlight ----------
 // Each diagram shape carries data-line. Clicking a shape selects its
@@ -661,6 +877,244 @@ diagram.addEventListener("click", e => {
 });
 
 editor.addEventListener("input", scheduleRender);
+editor.addEventListener("input", scheduleSnapshot);
+
+// ---------- double-click a lane caption to rename it ----------
+// Renaming updates every reference to that lane in the source, then
+// re-renders. Box captions, sections and loop targets are left untouched.
+let laneEditInput = null;
+function closeLaneEdit() {
+  if (laneEditInput) { laneEditInput.remove(); laneEditInput = null; }
+}
+function startLaneEdit(el, oldName) {
+  closeLaneEdit();
+  const rect = el.getBoundingClientRect();
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "lane-edit";
+  input.value = oldName;
+  input.style.left = Math.round(rect.left - 4) + "px";
+  input.style.top = Math.round(rect.top - 3) + "px";
+  input.style.minWidth = Math.max(Math.round(rect.width) + 8, 90) + "px";
+  document.body.appendChild(input);
+  laneEditInput = input;
+  input.focus();
+  input.select();
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    const newName = input.value.trim();
+    closeLaneEdit();
+    if (newName && newName !== oldName) {
+      commitSourceChange(renameLane(editor.value, oldName, newName));
+    }
+  };
+  input.addEventListener("keydown", ev => {
+    if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+    else if (ev.key === "Escape") { ev.preventDefault(); done = true; closeLaneEdit(); }
+  });
+  input.addEventListener("blur", commit);
+}
+diagram.addEventListener("dblclick", e => {
+  const el = e.target && e.target.closest && e.target.closest("[data-lane]");
+  if (!el) return;
+  e.preventDefault();
+  const idx = parseInt(el.getAttribute("data-lane"), 10);
+  if (!Number.isFinite(idx)) return;
+  const oldName = currentLanes[idx];
+  if (typeof oldName !== "string") return;
+  startLaneEdit(el, oldName);
+});
+
+// ---------- double-click a box to edit its caption ----------
+// Each box shape carries data-line pointing at its source line. We locate
+// the editable caption span within that raw line (preserving indentation,
+// any "[tag] " prefix, the lane/arrow syntax, and a trailing "<arrow
+// label>"), open an inline textarea over the box, and splice the new text
+// back in on commit. Source "\n" breaks map to real newlines while editing.
+function boxCaptionRange(raw) {
+  // Returns { capStart, capEnd, colon } describing the editable region of
+  // `raw`, or null when the line carries no editable box caption. When
+  // colon is false the line is an arrow with no ":caption" yet, so new
+  // text is inserted with a leading ": ".
+  const lead = (raw.match(/^\s*/) || [""])[0];
+  let bodyStart = lead.length;
+  const body = raw.slice(bodyStart).replace(/\s+$/, "");
+  if (!body || body.startsWith("#") || body.startsWith("//")) return null;
+  const bodyEnd = bodyStart + body.length;
+
+  // Strip a leading "[tag] " (only when a statement follows it).
+  const tagM = body.match(/^\[\s*[^\]]+?\s*\]\s+(?=\S)/);
+  let rest = body;
+  if (tagM) { bodyStart += tagM[0].length; rest = body.slice(tagM[0].length); }
+
+  // Directives and section banners are not boxes.
+  if (/^title\s*:/i.test(rest) || /^order\s*:/i.test(rest) || /^\[\s*.+?\s*\]$/.test(rest)) return null;
+
+  let m;
+  // note Lane(s): caption  (no arrow-label split)
+  if ((m = rest.match(/^note\b(?:\s+[^:]+?)?\s*:\s*/i))) {
+    return { capStart: bodyStart + m[0].length, capEnd: bodyEnd, colon: true };
+  }
+  // arrow:  from OP to [ : caption [<arrow label>] ]
+  const arrowM = rest.match(/^(.+?)\s*(?:<-{1,2}>|<-{1,2}|>-{1,2}>|-{1,2}>)\s*(.+?)(?::\s*(.*))?$/);
+  if (arrowM) {
+    if (arrowM[3] === undefined) return { capStart: bodyEnd, capEnd: bodyEnd, colon: false };
+    let capEnd = bodyEnd;
+    const cap = raw.slice(bodyEnd - arrowM[3].length, bodyEnd);
+    const lab = cap.match(/\s*<[^<>]+>\s*$/);
+    if (lab) capEnd -= lab[0].length;
+    return { capStart: bodyEnd - arrowM[3].length, capEnd, colon: true };
+  }
+  // Lane <: caption  (backward-only; arrow-label split applies)
+  if ((m = rest.match(/^[^<:]+?\s*<:\s*/))) {
+    let capEnd = bodyEnd;
+    const cap = raw.slice(bodyStart + m[0].length, bodyEnd);
+    const lab = cap.match(/\s*<[^<>]+>\s*$/);
+    if (lab) capEnd -= lab[0].length;
+    return { capStart: bodyStart + m[0].length, capEnd, colon: true };
+  }
+  // Lane: caption  (standalone; no arrow-label split)
+  if ((m = rest.match(/^[^:]+?:\s*(?=.)/))) {
+    return { capStart: bodyStart + m[0].length, capEnd: bodyEnd, colon: true };
+  }
+  return null;
+}
+
+let boxEditInput = null;
+function closeBoxEdit() {
+  if (boxEditInput) { boxEditInput.remove(); boxEditInput = null; }
+}
+function startBoxEdit(rect, lineNo) {
+  const lines = editor.value.split("\n");
+  const raw = lines[lineNo];
+  if (typeof raw !== "string") return;
+  const range = boxCaptionRange(raw);
+  if (!range) return;
+  closeBoxEdit();
+
+  const r = rect.getBoundingClientRect();
+  const ta = document.createElement("textarea");
+  ta.className = "box-edit";
+  ta.rows = 1;
+  ta.value = raw.slice(range.capStart, range.capEnd).replace(/\\n/g, "\n");
+  ta.style.left = Math.round(r.left) + "px";
+  ta.style.top = Math.round(r.top) + "px";
+  ta.style.width = Math.max(Math.round(r.width), 60) + "px";
+  ta.style.height = Math.max(Math.round(r.height), 24) + "px";
+  document.body.appendChild(ta);
+  boxEditInput = ta;
+  ta.focus();
+  ta.select();
+
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    const text = ta.value;
+    closeBoxEdit();
+    // Re-derive the range against the live line in case it shifted.
+    const cur = editor.value.split("\n");
+    if (lineNo < 0 || lineNo >= cur.length) return;
+    const line = cur[lineNo];
+    const rng = boxCaptionRange(line);
+    if (!rng) return;
+    const escaped = text.replace(/\r?\n/g, "\\n");
+    let mid = escaped;
+    if (!rng.colon) {
+      if (!escaped.trim()) return; // nothing to add to an empty arrow box
+      mid = ": " + escaped;
+    }
+    const next = line.slice(0, rng.capStart) + mid + line.slice(rng.capEnd);
+    if (next === line) return;
+    cur[lineNo] = next;
+    commitSourceChange(cur.join("\n"));
+  };
+  ta.addEventListener("keydown", ev => {
+    // Enter commits; Shift+Enter inserts a line break (source "\n").
+    if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); commit(); }
+    else if (ev.key === "Escape") { ev.preventDefault(); done = true; closeBoxEdit(); }
+  });
+  ta.addEventListener("blur", commit);
+}
+diagram.addEventListener("dblclick", e => {
+  const el = e.target && e.target.closest && e.target.closest("[data-line]");
+  if (!el) return;
+  const ln = parseInt(el.getAttribute("data-line"), 10);
+  if (!Number.isFinite(ln) || ln < 0) return;
+  // Size/position the editor over the box rect for this line.
+  const rect = diagram.querySelector(`svg rect[data-line="${ln}"]`) || el;
+  e.preventDefault();
+  startBoxEdit(rect, ln);
+});
+
+// ---------- double-click the title to edit it ----------
+// The title has no source line stored in the model, so we locate the
+// "title:" line in the source (last one wins, matching the parser) and
+// edit the text after the colon.
+function findTitleLine() {
+  const lines = editor.value.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/^\s*title\s*:/i.test(lines[i])) return i;
+  }
+  return -1;
+}
+let titleEditInput = null;
+function closeTitleEdit() {
+  if (titleEditInput) { titleEditInput.remove(); titleEditInput = null; }
+}
+function startTitleEdit(el, lineNo) {
+  const lines = editor.value.split("\n");
+  const raw = lines[lineNo];
+  const m = raw && raw.match(/^(\s*title\s*:\s*)(.*)$/i);
+  if (!m) return;
+  closeTitleEdit();
+  const r = el.getBoundingClientRect();
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "title-edit";
+  input.value = m[2];
+  // The title is centre-anchored, so centre the (fixed-width) input on the
+  // title's midpoint rather than positioning it from the left edge.
+  const cx = r.left + r.width / 2;
+  const w = Math.max(Math.round(r.width) + 24, 140);
+  input.style.width = w + "px";
+  input.style.left = Math.round(cx - w / 2) + "px";
+  input.style.top = Math.round(r.top - 3) + "px";
+  document.body.appendChild(input);
+  titleEditInput = input;
+  input.focus();
+  input.select();
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    const text = input.value;
+    closeTitleEdit();
+    const cur = editor.value.split("\n");
+    if (lineNo < 0 || lineNo >= cur.length) return;
+    const mm = cur[lineNo].match(/^(\s*title\s*:\s*)(.*)$/i);
+    if (!mm) return;
+    const next = mm[1] + text;
+    if (next === cur[lineNo]) return;
+    cur[lineNo] = next;
+    commitSourceChange(cur.join("\n"));
+  };
+  input.addEventListener("keydown", ev => {
+    if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+    else if (ev.key === "Escape") { ev.preventDefault(); done = true; closeTitleEdit(); }
+  });
+  input.addEventListener("blur", commit);
+}
+diagram.addEventListener("dblclick", e => {
+  const el = e.target && e.target.closest && e.target.closest("[data-title]");
+  if (!el) return;
+  e.preventDefault();
+  const lineNo = findTitleLine();
+  if (lineNo < 0) return;
+  startTitleEdit(el, lineNo);
+});
 
 // ---------- source syntax highlighting ----------
 // We render a colourised copy of the source into #editor-highlight,
@@ -1343,7 +1797,23 @@ function idbHandle(mode, run) {
 const idbGetHandle = () => idbHandle("readonly", s => s.get(HANDLE_KEY)).catch(() => undefined);
 const idbSetHandle = h => idbHandle("readwrite", s => s.put(h, HANDLE_KEY)).catch(() => {});
 const idbClearHandle = () => idbHandle("readwrite", s => s.delete(HANDLE_KEY)).catch(() => {});
-(async () => { try { fileHandle = (await idbGetHandle()) || null; } catch {} })();
+(async () => { try { fileHandle = (await idbGetHandle()) || null; } catch {} updateSaveButton(); setFileName(fileHandle && fileHandle.name); })();
+
+// Save (silent re-save) is only meaningful once there's a file to save back
+// to. It stays disabled until the diagram has been saved or loaded to a real
+// file; Save As is always available.
+const saveButton = document.getElementById("save-button");
+function updateSaveButton() {
+  if (saveButton) saveButton.disabled = !fileHandle;
+}
+
+// Show the current file's name beside the title after a load or save; hidden
+// for a fresh, never-saved diagram.
+const fileNameEl = document.getElementById("file-name");
+function setFileName(name) {
+  fileNameEl.textContent = name || "";
+  fileNameEl.hidden = !name;
+}
 
 // Confirm we still hold (or can re-request) read-write access to a handle.
 async function ensureWritable(handle) {
@@ -1356,6 +1826,7 @@ async function ensureWritable(handle) {
 function setFileHandle(handle) {
   fileHandle = handle || null;
   if (handle) idbSetHandle(handle); else idbClearHandle();
+  updateSaveButton();
 }
 
 const loadInput = document.createElement("input");
@@ -1368,8 +1839,10 @@ document.getElementById("new-button").addEventListener("click", () => {
   if (isDirty() && !confirm("Discard unsaved changes and start a new diagram?")) return;
   editor.value = "";
   setFileHandle(null); // a fresh diagram is not tied to any file yet
+  setFileName(null);
   markSaved();
   editor.dispatchEvent(new Event("input"));
+  snapshotNow();
 });
 
 document.getElementById("load-button").addEventListener("click", async () => {
@@ -1384,8 +1857,10 @@ document.getElementById("load-button").addEventListener("click", async () => {
       const file = await handle.getFile();
       editor.value = await file.text();
       setFileHandle(handle);
+      setFileName(file.name);
       markSaved();
       editor.dispatchEvent(new Event("input"));
+      snapshotNow();
       flashStatus(`Loaded ${file.name}`);
     } catch (e) {
       if (e && e.name !== "AbortError") flashStatus("Load failed");
@@ -1404,26 +1879,29 @@ loadInput.addEventListener("change", async () => {
     const text = await file.text();
     editor.value = text;
     setFileHandle(null); // no handle from the input fallback; Save will prompt
+    setFileName(file.name);
     markSaved();
     editor.dispatchEvent(new Event("input"));
+    snapshotNow();
     flashStatus(`Loaded ${file.name}`);
   } catch (e) {
     flashStatus("Load failed");
   }
 });
 
-document.getElementById("save-button").addEventListener("click", async () => {
+// Save writes the source to a file. With the File System Access API a normal
+// Save silently overwrites the retained handle; Save As (forceNew) always
+// prompts for a new location and adopts it. Without the API both fall back to
+// a plain download.
+async function saveSource(forceNew) {
   const text = editor.value;
-  // Prefer the File System Access API. Re-use the retained handle for a
-  // silent overwrite; only show the picker when there's no usable handle.
-  // Fall back to a plain download where the API is unavailable.
   if (window.showSaveFilePicker) {
     try {
-      let handle = fileHandle;
+      let handle = forceNew ? null : fileHandle;
       if (handle && !(await ensureWritable(handle))) handle = null;
       if (!handle) {
         handle = await window.showSaveFilePicker({
-          suggestedName: "swimlane.txt",
+          suggestedName: (fileHandle && fileHandle.name) || "swimlane.txt",
           types: [{ description: "Text file", accept: { "text/plain": [".txt"] } }],
         });
       }
@@ -1431,6 +1909,7 @@ document.getElementById("save-button").addEventListener("click", async () => {
       await writable.write(text);
       await writable.close();
       setFileHandle(handle);
+      setFileName(handle.name);
       markSaved();
       flashStatus(handle.name ? `Saved ${handle.name}` : "Saved");
     } catch (e) {
@@ -1439,9 +1918,12 @@ document.getElementById("save-button").addEventListener("click", async () => {
     return;
   }
   triggerDownload(new Blob([text], { type: "text/plain" }), "swimlane.txt");
+  setFileName("swimlane.txt");
   markSaved();
   flashStatus("Saved");
-});
+}
+document.getElementById("save-button").addEventListener("click", () => saveSource(false));
+document.getElementById("save-as-button").addEventListener("click", () => saveSource(true));
 
 window.addEventListener("beforeunload", e => {
   if (isDirty()) {
@@ -1483,6 +1965,7 @@ window.addEventListener("beforeunload", e => {
 
 // initial load
 editor.value = savedSource != null ? savedSource : "";
+historyInit(editor.value);
 updateSourceHighlight();
 doRender();
 </script>

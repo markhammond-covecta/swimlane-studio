@@ -66,6 +66,8 @@ Boxes live in their SENDER's lane; arrows route to the target lane.
   Bob >-> Alice: Reply            Counter-pair reply sharing a column.
   Alice <: Done                   Backward-only terminal box.
   Alice: Read output              Standalone box (no arrow of its own).
+  [1] Alice -> Bob: Start         Tag this box "1" (the tag is not drawn).
+  Carol -> [1]: Retry             Loop back to the box tagged "1".
   [ Section name ]                Section banner over the columns that follow.
   note Alice: Inspect logs        Note attached to one lane.
   note Alice, Bob: Window\\n2s      Multi-lane note (\\n = line break).
@@ -74,6 +76,13 @@ Boxes live in their SENDER's lane; arrows route to the target lane.
 Arrow captions: end a message with <...> to caption the arrow itself, e.g.
   Browser -> Server: Send request <http POST>
 renders a "Send request" box with "http POST" beside the arrow.
+
+Loop-backs: prefix a line with "[tag] " to label the box it creates, then
+target "[tag]" from a later statement to draw a backward arc to that box.
+The tag is never displayed. A same-lane loop stays within its lane; a
+cross-lane loop routes through a channel above the lanes (or to the side in
+vertical orientation). The arc never crosses a box, and breaks where it
+crosses another connector so it reads as passing underneath.
 
 Orientation: "horizontal" (lanes stacked, time L->R) or "vertical" (lanes
 side-by-side, time top->down). ASCII output is always horizontal.`;

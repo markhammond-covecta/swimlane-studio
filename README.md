@@ -7,7 +7,7 @@ can be flipped between horizontal swimlanes (lanes stacked top-to-bottom,
 time flowing left-to-right) and vertical swimlanes (lanes side-by-side
 left-to-right, time flowing top-to-bottom).
 
-![Screenshot](docs/screenshot.png)
+![An order-processing swimlane diagram rendered by Swimlane Studio](docs/screenshot.png)
 
 ## Quick start (web app)
 
@@ -30,6 +30,21 @@ changes on disk, so editing in another tool gives you a live preview.
 The editor content, split-pane position, zoom level, and orientation
 choice all survive reloads via `localStorage`.
 
+### Standalone single file (no server)
+
+Browsers won't `import` the engine module over `file://`, so opening
+`index.html` directly from disk doesn't work. Run the build to inline the
+engine into one self-contained file you can open straight from Finder/Explorer
+(double-click — no server):
+
+```sh
+node build.mjs                 # writes swimlane-studio.html
+node build.mjs my-diagram.html # or choose the output name
+```
+
+The output embeds `lib/swimlane-core.js` as an inline module, so there are no
+external requests. Re-run it after editing `index.html` or the engine.
+
 ## Syntax
 
 The DSL is line-oriented. Click the
@@ -47,6 +62,8 @@ The DSL is line-oriented. Click the
 | `Bob >-> Alice: Reply` | Counter-pair forward link. After `Alice -> Bob`, this opts INTO the shared-column side-by-side rendering (down-and-up arrows next to each other). Without `>->`, the reply breaks the chain and starts a new column. |
 | `Alice <: Done` | Backward-only box: incoming link from the previous Alice box, no outgoing trail. Useful for terminal states. |
 | `Alice: Read output` | Standalone (non-directed) box — no arrows of its own; receives any cross-lane arrow targeting Alice at the same column. |
+| `[1] Alice -> Bob: Start` | Tag the box this line creates as `1`. The tag is never drawn; it just gives a later statement something to loop back to. Any tag name works (`[1]`, `[retry]`, …). |
+| `Carol -> [1]: Retry` | Loop back to the box tagged `1`: draws a `Retry` box in Carol's lane with a backward arc to the tagged box. See [Loop-backs](#loop-backs). |
 | `[ Section name ]` | Labelled section banner spanning the columns that follow. |
 | `note Alice: Inspect logs` | Yellow note attached to a single lane. |
 | `note Alice, Bob: Drift window\n2s` | Multi-lane note (uses `\n` for line breaks). |
@@ -62,6 +79,31 @@ Browser -> Server: Send request <synchronous call>
 ```
 
 renders a "Send request" box with "synchronous call" beside the arrow.
+
+### Loop-backs
+
+To show control returning to an earlier step, tag the target box with a
+leading `[tag] ` and then point a later statement at `[tag]`:
+
+```
+[1] First -> Second: Apple
+Second -> Third: Orange
+Third -> [1]: Lemon
+```
+
+The `Lemon` box sits in the `Third` lane (like any other message) and a
+backward arc is drawn from it to the `Apple` box tagged `1`. The tag
+itself is never displayed.
+
+- Tag names are free-form (`[1]`, `[retry]`, `[step 2]`, …) and may be
+  referenced before or after they are defined.
+- The arc routes through a reserved channel above the lanes (to the side
+  in vertical orientation) and **never crosses a box**.
+- Where the arc crosses another connector it breaks, so it reads as
+  passing underneath. In ASCII the break is a gap in the arc; in SVG the
+  crossing connector carries a thin white casing.
+- Multiple loop-backs nest automatically — wider arcs sit further out.
+- An undefined tag is reported as an error and the loop-back is dropped.
 
 ### Wrapping
 
