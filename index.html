@@ -443,6 +443,39 @@
     overflow: hidden;
   }
 
+  /* Lane-name autocomplete popup in the source editor. */
+  .autocomplete {
+    position: fixed;
+    z-index: 60;
+    min-width: 130px;
+    max-width: 280px;
+    max-height: 220px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18);
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+  .autocomplete li {
+    padding: 4px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--ink);
+  }
+  .autocomplete li.active {
+    background: #dbeafe;
+    color: #1e3a8a;
+  }
+  .autocomplete li .match { font-weight: 700; }
+
   .error {
     margin: 16px;
     padding: 12px 14px;
@@ -672,6 +705,7 @@
         <tr><td>Double-click a box</td><td>Edit the box caption inline. Enter to apply, Shift+Enter for a line break, Esc to cancel.</td></tr>
         <tr><td>Double-click the title</td><td>Edit the diagram title inline. Enter to apply, Esc to cancel.</td></tr>
         <tr><td>Undo / Redo</td><td>Step backwards or forwards through source edits with the buttons or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z.</td></tr>
+        <tr><td>Lane autocomplete</td><td>Typing a lane name (line start, after an arrow, or in a <code>note</code>/<code>order</code> list) suggests existing lanes in the current diagram. &uarr;/&darr; to move, Tab to accept, Esc to dismiss.</td></tr>
       </table>
     </div>
   </div>
@@ -703,16 +737,20 @@ function doRender() {
     model.orientation = currentOrientation;
     solveLayout(model);
   } catch (e) {
+    currentLanes = [];
     diagram.innerHTML = `<div class="error">Layout error: ${escXml(e.message)}</div>`;
     return;
   }
+  // Refresh the known-lane list on every render attempt — including when the
+  // current source defines no lanes — so autocomplete only ever suggests
+  // lanes from the *current* diagram, never stale ones from a previous one.
+  currentLanes = model.lanes.slice();
   if (!model.lanes.length) {
     diagram.innerHTML = "";
     sizeInfo.textContent = "";
     status.textContent = "";
     return;
   }
-  currentLanes = model.lanes.slice();
   const svgString = render(model);
   diagram.innerHTML = svgString;
   const svg = diagram.querySelector("svg");
@@ -1219,6 +1257,198 @@ editor.addEventListener("scroll", () => {
   editorHighlight.scrollTop = editor.scrollTop;
   editorHighlight.scrollLeft = editor.scrollLeft;
 });
+
+// ---------- lane-name autocomplete ----------
+// While typing a lane name in the source — at the start of a line, after an
+// arrow operator, or in a note/order list — suggest previously-used lane
+// names (from the last render's `currentLanes`). Arrow keys move the
+// selection, Tab accepts, Esc dismisses.
+const acEl = document.createElement("ul");
+acEl.className = "autocomplete";
+acEl.hidden = true;
+document.body.appendChild(acEl);
+let acItems = [];     // candidate lane names
+let acIndex = 0;      // highlighted item
+let acRange = null;   // { start, end } absolute offsets in editor.value to replace
+let acPrefixLen = 0;  // length of the typed prefix (bolded in the list)
+
+function acHide() {
+  if (!acEl.hidden) { acEl.hidden = true; acItems = []; acRange = null; }
+}
+
+// Trim whitespace off [a,b) and return the lane segment if the caret sits in
+// it with a non-empty prefix; else null.
+function acTrimSeg(line, a, b, col) {
+  let s = a; while (s < b && /\s/.test(line[s])) s++;
+  let e = b; while (e > s && /\s/.test(line[e - 1])) e--;
+  if (col < s || col > e) return null;
+  const prefix = line.slice(s, col);
+  if (!prefix.trim()) return null;
+  return { wordStart: s, wordEnd: e, prefix };
+}
+// The comma-separated item the caret is in, within [regionStart, regionEnd).
+function acCommaItem(line, col, regionStart, regionEnd) {
+  if (col < regionStart || col > regionEnd) return null;
+  let s = regionStart;
+  for (let i = regionStart; i < col; i++) if (line[i] === ",") s = i + 1;
+  let e = regionEnd;
+  const nc = line.indexOf(",", col);
+  if (nc !== -1 && nc < regionEnd) e = nc;
+  return acTrimSeg(line, s, e, col);
+}
+// The lane-name segment the caret is in on this line, or null.
+function laneSegmentAt(line, col) {
+  if (/^\s*(?:#|\/\/)/.test(line)) return null;
+  let m;
+  if ((m = line.match(/^(\s*order\s*:\s*)/i))) {
+    return col < m[1].length ? null : acCommaItem(line, col, m[1].length, line.length);
+  }
+  if (/^\s*title\s*:/i.test(line)) return null;
+  if ((m = line.match(/^(\s*note\s+)/i))) {
+    const c = line.indexOf(":", m[1].length);
+    const end = c === -1 ? line.length : c;
+    return (col < m[1].length || col > end) ? null : acCommaItem(line, col, m[1].length, end);
+  }
+  // message / standalone / incoming-only line: lanes live before the caption
+  // colon, split by arrow operators. Skip indentation and any "[tag] ".
+  let start = line.match(/^\s*/)[0].length;
+  const tag = line.slice(start).match(/^\[\s*[^\]]+?\s*\]\s+/);
+  if (tag && start + tag[0].length <= col) start += tag[0].length;
+  const opM = line.slice(start).match(/<-{1,2}>|>-{1,2}>|<-{1,2}|-{1,2}>/);
+  if (opM) {
+    const oi = start + opM.index;
+    const oend = oi + opM[0].length;
+    if (col <= oi) return acTrimSeg(line, start, oi, col);          // FROM lane
+    const c = line.indexOf(":", oend);
+    const toEnd = c === -1 ? line.length : c;
+    return col > toEnd ? null : acTrimSeg(line, oend, toEnd, col);  // TO lane
+  }
+  const inc = line.indexOf("<:", start);
+  if (inc !== -1) return col > inc ? null : acTrimSeg(line, start, inc, col);
+  const c = line.indexOf(":", start);
+  const end = c === -1 ? line.length : c;
+  return col > end ? null : acTrimSeg(line, start, end, col);
+}
+
+function acRender() {
+  acEl.innerHTML = "";
+  acItems.forEach((name, i) => {
+    const li = document.createElement("li");
+    if (i === acIndex) li.className = "active";
+    const bold = document.createElement("span");
+    bold.className = "match";
+    bold.textContent = name.slice(0, acPrefixLen);
+    li.appendChild(bold);
+    li.appendChild(document.createTextNode(name.slice(acPrefixLen)));
+    li.addEventListener("mousedown", e => { e.preventDefault(); acAccept(i); });
+    acEl.appendChild(li);
+  });
+  acEl.hidden = false;
+}
+
+function acPosition(caret) {
+  const c = caretCoords(editor, caret);
+  acEl.style.left = "0px"; acEl.style.top = "0px"; // reset for measurement
+  const w = acEl.offsetWidth, h = acEl.offsetHeight;
+  let left = c.left;
+  let top = c.top + c.lineHeight + 2;
+  if (left + w > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 8 - w);
+  if (top + h > window.innerHeight - 8) top = c.top - h - 2; // flip above
+  acEl.style.left = Math.round(left) + "px";
+  acEl.style.top = Math.round(top) + "px";
+}
+
+function acUpdate() {
+  if (document.activeElement !== editor || editor.selectionStart !== editor.selectionEnd) return acHide();
+  if (!currentLanes.length) return acHide();
+  const value = editor.value;
+  const caret = editor.selectionStart;
+  const lineStart = value.lastIndexOf("\n", caret - 1) + 1;
+  let lineEnd = value.indexOf("\n", caret);
+  if (lineEnd === -1) lineEnd = value.length;
+  const line = value.slice(lineStart, lineEnd);
+  const seg = laneSegmentAt(line, caret - lineStart);
+  if (!seg) return acHide();
+  const pfx = seg.prefix.toLowerCase();
+  const seen = new Set();
+  const matches = [];
+  for (const name of currentLanes) {
+    const ln = name.toLowerCase();
+    if (ln === pfx || !ln.startsWith(pfx) || seen.has(name)) continue;
+    seen.add(name);
+    matches.push(name);
+    if (matches.length >= 8) break;
+  }
+  if (!matches.length) return acHide();
+  acItems = matches;
+  acIndex = 0;
+  acPrefixLen = seg.prefix.length;
+  acRange = { start: lineStart + seg.wordStart, end: lineStart + seg.wordEnd };
+  acRender();
+  acPosition(caret);
+}
+
+function acAccept(i) {
+  const name = acItems[i != null ? i : acIndex];
+  if (!name || !acRange) return acHide();
+  const v = editor.value;
+  const caret = acRange.start + name.length;
+  editor.value = v.slice(0, acRange.start) + name + v.slice(acRange.end);
+  editor.setSelectionRange(caret, caret);
+  acHide();
+  editor.dispatchEvent(new Event("input"));
+}
+
+// Intercept navigation/accept keys before the textarea acts on them.
+editor.addEventListener("keydown", e => {
+  if (acEl.hidden) return;
+  if (e.key === "ArrowDown") { e.preventDefault(); acIndex = (acIndex + 1) % acItems.length; acRender(); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); acIndex = (acIndex - 1 + acItems.length) % acItems.length; acRender(); }
+  else if (e.key === "Tab") { e.preventDefault(); acAccept(); }
+  else if (e.key === "Escape") { e.preventDefault(); acHide(); }
+  else if (e.key === "Enter") { acHide(); } // let Enter insert a newline as usual
+}, true);
+
+editor.addEventListener("input", acUpdate);
+editor.addEventListener("click", acUpdate);
+editor.addEventListener("keyup", e => {
+  if (["ArrowDown", "ArrowUp", "Tab", "Escape", "Enter"].includes(e.key)) return;
+  acUpdate();
+});
+editor.addEventListener("blur", () => setTimeout(acHide, 0));
+
+// Pixel position of the textarea caret, via a hidden mirror element that
+// replicates the textarea's box and text up to the caret.
+const CARET_PROPS = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+  "fontFamily", "fontSize", "fontWeight", "fontStyle", "letterSpacing", "lineHeight",
+  "textTransform", "wordSpacing", "tabSize", "textIndent", "whiteSpace", "overflowWrap", "wordBreak"];
+let _caretMirror = null;
+function caretCoords(ta, pos) {
+  const style = getComputedStyle(ta);
+  if (!_caretMirror) { _caretMirror = document.createElement("div"); document.body.appendChild(_caretMirror); }
+  const div = _caretMirror, s = div.style;
+  s.position = "fixed";
+  s.visibility = "hidden";
+  s.whiteSpace = "pre-wrap";
+  s.overflowWrap = "break-word";
+  s.overflow = "hidden";
+  for (const p of CARET_PROPS) s[p] = style[p];
+  s.boxSizing = "border-box";
+  s.borderWidth = "0px";
+  s.width = ta.clientWidth + "px"; // content+padding, excludes scrollbar — matches wrap width
+  const rect = ta.getBoundingClientRect();
+  s.left = rect.left + "px";
+  s.top = rect.top + "px";
+  div.textContent = ta.value.slice(0, pos);
+  const marker = document.createElement("span");
+  marker.textContent = ta.value.slice(pos) || ".";
+  div.appendChild(marker);
+  const left = rect.left + marker.offsetLeft - ta.scrollLeft;
+  const top = rect.top + marker.offsetTop - ta.scrollTop;
+  const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2;
+  div.textContent = "";
+  return { left, top, lineHeight };
+}
 
 // ---------- zoom ----------
 // The diagram is an SVG with explicit width/height attributes. Zoom
