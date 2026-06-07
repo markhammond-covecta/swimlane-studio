@@ -79,10 +79,28 @@ const appBlock =
   "\n})();\n" +
   SCRIPT_CLOSE;
 
+// --- Error reporter -------------------------------------------------------
+// Opened from disk there's no obvious console, so surface any uncaught script
+// error as a visible banner instead of a silently broken page. Registered
+// first (before the engine/app) so it catches errors from either.
+const errorReporterBlock =
+  "<script>\n" +
+  "window.addEventListener('error', function (ev) {\n" +
+  "  var msg = (ev && (ev.message || (ev.error && (ev.error.stack || ev.error.message)))) || 'Unknown error';\n" +
+  "  var b = document.getElementById('__sw_fatal');\n" +
+  "  if (!b) {\n" +
+  "    b = document.createElement('pre'); b.id = '__sw_fatal';\n" +
+  "    b.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;margin:0;padding:10px 14px;background:#fef2f2;color:#b91c1c;font:12px/1.45 ui-monospace,Menlo,monospace;white-space:pre-wrap;border-top:1px solid #fecaca;max-height:45%;overflow:auto';\n" +
+  "    (document.body || document.documentElement).appendChild(b);\n" +
+  "  }\n" +
+  "  b.textContent = 'Script error: ' + msg;\n" +
+  "});\n" +
+  "</script>";
+
 // --- Assemble -------------------------------------------------------------
 let out =
   html.slice(0, appOpenIdx) +
-  engineBlock + "\n" + appBlock +
+  errorReporterBlock + "\n" + engineBlock + "\n" + appBlock +
   html.slice(appCloseIdx + SCRIPT_CLOSE.length);
 
 out = out.replace(

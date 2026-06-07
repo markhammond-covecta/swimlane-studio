@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Swimlane Studio &mdash; Horizontal Swimlane Diagrams</title>
+<title>Swimlane Studio</title>
 <style>
   :root {
     --bg: #f7f8fa;
@@ -709,6 +709,25 @@
       </table>
     </div>
   </div>
+
+<script>
+  // index.html loads its engine as an ES module, which browsers refuse to run
+  // over file://. If this page is opened straight from disk it fails silently,
+  // so detect that and point the user at the self-contained build instead.
+  // This is a classic script (runs under file://); the check stays quiet over
+  // http and in swimlane-studio.html, whose inlined engine sets the global.
+  if (location.protocol === "file:") {
+    window.addEventListener("load", function () {
+      setTimeout(function () {
+        if (typeof globalThis.__swimlaneCore !== "undefined") return; // engine ran
+        var o = document.createElement("div");
+        o.style.cssText = "position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;background:#0f172a;color:#e2e8f0;font:15px/1.6 system-ui,-apple-system,sans-serif;text-align:center";
+        o.innerHTML = '<div style="max-width:560px"><h2 style="margin:0 0 14px;font-size:20px;color:#fff">Open <code style="background:#1e293b;padding:1px 6px;border-radius:4px">swimlane-studio.html</code> instead</h2><p style="margin:0 0 10px">You opened <code>index.html</code> from the file system. It loads its diagram engine as an ES&nbsp;module, which browsers don\'t run over <code>file://</code>.</p><p style="margin:0">Double-click <strong>swimlane-studio.html</strong> (the self-contained build &mdash; create it with <code>node build.mjs</code>), or serve this folder with a local web server.</p></div>';
+        document.body.appendChild(o);
+      }, 250);
+    });
+  }
+</script>
 
 <script type="module">
 // Diagram engine lives in lib/swimlane-core.js so the MCP server can
