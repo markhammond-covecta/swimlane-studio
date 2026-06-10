@@ -2506,6 +2506,41 @@ window.SwimlaneStudio = {
     commitSourceChange(String(src));
     return this.getContext();
   },
+  // Animated variant used by the AI assistant: the source lands in the
+  // editor a line at a time, re-rendering the diagram as it grows, so the
+  // user watches the diagram build rather than appear at once. Frames whose
+  // prefix doesn't parse cleanly are skipped (a half-written source can
+  // transiently reference a tag or lane defined further down), the final
+  // state always renders in full, and the whole animation is a SINGLE undo
+  // step. A newer call supersedes an in-flight one.
+  _animToken: 0,
+  setSourceAnimated(src) {
+    const text = String(src);
+    const lines = text.split("\n");
+    // One line per frame, capped so large diagrams still finish within ~6s.
+    const delay = Math.max(30, Math.min(150, Math.floor(6000 / lines.length)));
+    const token = ++this._animToken;
+    const self = this;
+    return new Promise(resolve => {
+      let shown = 0;
+      function step() {
+        if (token !== self._animToken) { resolve(self.getContext()); return; } // superseded
+        shown++;
+        if (shown >= lines.length) {
+          commitSourceChange(text); // single undo step + persist + full render
+          resolve(self.getContext());
+          return;
+        }
+        const partial = lines.slice(0, shown).join("\n");
+        editor.value = partial;
+        updateSourceHighlight();
+        editor.scrollTop = editor.scrollHeight;
+        if (!self.validate(partial).errors.length) doRender();
+        setTimeout(step, delay);
+      }
+      step();
+    });
+  },
   setOrientation(o) {
     setOrientation(o);
     return currentOrientation;
@@ -3394,7 +3429,8 @@ Rules:
       }
       if (tc.name === 'set_source') {
         showActionIndicator('Updating diagram...');
-        const ctx = ST.setSource(tc.arguments.source != null ? String(tc.arguments.source) : '');
+        const src = tc.arguments.source != null ? String(tc.arguments.source) : '';
+        const ctx = ST.setSourceAnimated ? await ST.setSourceAnimated(src) : ST.setSource(src);
         let msg = 'Diagram updated.';
         if (ctx.errors.length) {
           msg = 'Diagram updated, but the source has errors — fix them with another set_source call.';
