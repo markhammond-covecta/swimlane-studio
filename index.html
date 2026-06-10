@@ -710,6 +710,259 @@
     </div>
   </div>
 
+<style>
+/* ── AI Assistant chat widget ── */
+.ai-chat-toggle {
+  position: fixed; bottom: 24px; right: 24px; z-index: 90;
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--accent); color: #fff; border: none;
+  cursor: pointer; display: none; align-items: center; justify-content: center;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.ai-chat-toggle:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+}
+.ai-chat-toggle svg { width: 24px; height: 24px; }
+.ai-chat-panel {
+  position: fixed; bottom: 24px; right: 24px; z-index: 91;
+  width: 360px; height: 460px;
+  display: none; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.2);
+  overflow: hidden;
+}
+.ai-chat-panel.open { display: flex; }
+/* Undocked: draggable, resizable */
+.ai-chat-panel.undocked {
+  resize: both; overflow: hidden;
+  min-width: 320px; min-height: 300px;
+}
+.ai-chat-panel.undocked .ai-chat-header {
+  cursor: move;
+}
+.ai-chat-header {
+  display: flex; align-items: center; padding: 10px 14px;
+  background: var(--accent); color: #fff; flex-shrink: 0;
+  gap: 8px;
+}
+.ai-chat-header-title {
+  font-size: 14px; font-weight: 600; flex: 1;
+}
+.ai-chat-header-btn {
+  background: none; border: none; color: #fff; cursor: pointer;
+  font-size: 16px; line-height: 1; padding: 2px 4px; opacity: 0.8;
+  border-radius: 3px;
+}
+.ai-chat-header-btn:hover { opacity: 1; background: rgba(255,255,255,0.15); }
+.ai-chat-messages {
+  flex: 1; overflow-y: auto; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  font-size: 13px; line-height: 1.5;
+}
+.ai-chat-msg {
+  max-width: 88%; padding: 8px 12px;
+  border-radius: 10px; word-wrap: break-word;
+}
+.ai-chat-msg.user {
+  align-self: flex-end;
+  background: var(--accent); color: #fff;
+  border-bottom-right-radius: 3px;
+}
+.ai-chat-msg.assistant {
+  align-self: flex-start;
+  background: #f3f4f6; color: var(--ink);
+  border-bottom-left-radius: 3px;
+}
+.ai-chat-msg.assistant code {
+  background: var(--bg); padding: 1px 4px; border-radius: 3px;
+  font-family: var(--mono); font-size: 12px;
+}
+.ai-chat-msg.assistant pre {
+  background: var(--bg); padding: 8px; border-radius: 6px;
+  overflow-x: auto; font-family: var(--mono); font-size: 12px;
+  margin: 6px 0; line-height: 1.4;
+}
+.ai-chat-msg.assistant pre code {
+  background: none; padding: 0;
+}
+.ai-chat-msg.assistant ul,
+.ai-chat-msg.assistant ol {
+  margin: 4px 0; padding-left: 18px;
+}
+.ai-chat-msg.assistant li { margin-bottom: 2px; }
+.ai-chat-msg.assistant table {
+  border-collapse: collapse; width: 100%; margin: 6px 0; font-size: 12px;
+}
+.ai-chat-msg.assistant th,
+.ai-chat-msg.assistant td {
+  border: 1px solid var(--line); padding: 4px 8px; text-align: left;
+}
+.ai-chat-msg.assistant th {
+  background: #f3f4f6; font-weight: 600;
+}
+.ai-chat-msg.assistant td {
+  background: var(--panel);
+}
+.ai-chat-typing {
+  align-self: flex-start;
+  display: none; padding: 8px 14px;
+  font-size: 13px; color: var(--ink-soft);
+  font-style: italic;
+}
+.ai-chat-typing.visible { display: block; }
+.ai-chat-input-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-top: 1px solid var(--line);
+  flex-shrink: 0; background: var(--panel);
+}
+.ai-chat-input {
+  flex: 1; padding: 7px 10px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--bg);
+  color: var(--ink); font-size: 13px; font-family: var(--sans);
+  outline: none; resize: none; min-height: 20px; max-height: 80px;
+}
+.ai-chat-input:focus { border-color: var(--accent); }
+.ai-chat-send {
+  width: 34px; height: 34px; border-radius: 6px;
+  background: var(--accent); color: #fff; border: none;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.ai-chat-send:hover { background: #1d4ed8; }
+.ai-chat-send:disabled { opacity: 0.5; cursor: not-allowed; }
+.ai-chat-send svg { width: 16px; height: 16px; }
+.ai-chat-action-indicator {
+  font-size: 11px; color: var(--ink-soft); font-style: italic;
+  padding: 2px 12px; display: none;
+}
+.ai-chat-action-indicator.visible { display: block; }
+/* Settings panel */
+.ai-chat-settings {
+  display: none; flex-direction: column; gap: 12px;
+  padding: 16px 14px; flex: 1; overflow-y: auto;
+}
+.ai-chat-settings.open { display: flex; }
+.ai-chat-settings label {
+  font-size: 12px; font-weight: 600; color: var(--ink); display: block; margin-bottom: 4px;
+}
+.ai-chat-settings input {
+  width: 100%; padding: 7px 10px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--bg);
+  color: var(--ink); font-size: 13px; font-family: var(--mono);
+}
+.ai-chat-settings input:focus { border-color: var(--accent); outline: none; }
+.ai-chat-settings .ai-chat-settings-hint {
+  font-size: 11px; color: var(--ink-soft); margin-top: 2px;
+}
+.ai-chat-settings-save {
+  padding: 8px 16px; border: none; border-radius: 6px;
+  background: var(--accent); color: #fff; font-size: 13px; font-weight: 600;
+  cursor: pointer; align-self: flex-start;
+}
+.ai-chat-settings-save:hover { background: #1d4ed8; }
+.ai-chat-settings-status {
+  font-size: 12px; color: #16a34a; display: none;
+}
+</style>
+
+<!-- AI Assistant chat widget -->
+<button class="ai-chat-toggle" id="ai-chat-toggle" title="AI Assistant">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+  </svg>
+</button>
+<div class="ai-chat-panel" id="ai-chat-panel">
+  <div class="ai-chat-header">
+    <span class="ai-chat-header-title">AI Assistant</span>
+    <button class="ai-chat-header-btn" id="ai-chat-settings-btn" title="Settings">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+    <button class="ai-chat-header-btn" id="ai-chat-undock" title="Undock">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+      </svg>
+    </button>
+    <button class="ai-chat-header-btn" id="ai-chat-minimize" title="Minimize">&#x2013;</button>
+    <button class="ai-chat-header-btn" id="ai-chat-close" title="Close">&#x2715;</button>
+  </div>
+  <div class="ai-chat-settings" id="ai-chat-settings">
+    <div>
+      <label for="ai-chat-provider">Provider</label>
+      <select id="ai-chat-provider" style="width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font-size:13px;font-family:var(--mono)">
+        <option value="anthropic">Anthropic (Claude)</option>
+        <option value="openai">OpenAI (GPT / o-series)</option>
+        <option value="gemini">Google (Gemini)</option>
+      </select>
+    </div>
+    <!-- Anthropic settings -->
+    <div class="ai-provider-fields" data-provider="anthropic">
+      <div>
+        <label>API Key</label>
+        <input type="password" data-setting="key" placeholder="sk-ant-..." autocomplete="off">
+      </div>
+      <div>
+        <label>Model</label>
+        <input type="text" data-setting="model" placeholder="claude-sonnet-4-6">
+        <div class="ai-chat-settings-hint">Default: claude-sonnet-4-6</div>
+      </div>
+      <div>
+        <label>API Tier</label>
+        <select data-setting="tier" style="width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font-size:13px;font-family:var(--mono)">
+          <option value="1">Tier 1 &mdash; 50 RPM</option>
+          <option value="2">Tier 2 &mdash; 1,000 RPM</option>
+          <option value="3">Tier 3 &mdash; 2,000 RPM</option>
+          <option value="4">Tier 4 &mdash; 4,000 RPM</option>
+        </select>
+        <div class="ai-chat-settings-hint"><a href="https://console.anthropic.com/settings/limits" target="_blank" style="color:var(--accent)">Check your tier</a></div>
+      </div>
+    </div>
+    <!-- OpenAI settings -->
+    <div class="ai-provider-fields" data-provider="openai" style="display:none">
+      <div>
+        <label>API Key</label>
+        <input type="password" data-setting="key" placeholder="sk-..." autocomplete="off">
+      </div>
+      <div>
+        <label>Model</label>
+        <input type="text" data-setting="model" placeholder="gpt-5.4">
+        <div class="ai-chat-settings-hint">Default: gpt-5.4 (also: gpt-5.4-mini, gpt-5.4-pro)</div>
+      </div>
+    </div>
+    <!-- Gemini settings -->
+    <div class="ai-provider-fields" data-provider="gemini" style="display:none">
+      <div>
+        <label>API Key</label>
+        <input type="password" data-setting="key" placeholder="AI..." autocomplete="off">
+      </div>
+      <div>
+        <label>Model</label>
+        <input type="text" data-setting="model" placeholder="gemini-3.1-flash">
+        <div class="ai-chat-settings-hint">Default: gemini-3.1-flash (also: gemini-3.1-pro, gemini-3.1-flash-lite)</div>
+      </div>
+    </div>
+    <div class="ai-chat-settings-hint" style="margin-top:4px">Stored in your browser only. Sent directly to the provider's API.</div>
+    <button class="ai-chat-settings-save" id="ai-chat-settings-save">Save</button>
+    <span class="ai-chat-settings-status" id="ai-chat-settings-status">Settings saved</span>
+  </div>
+  <div class="ai-chat-messages" id="ai-chat-messages">
+  </div>
+  <div class="ai-chat-typing" id="ai-chat-typing">Thinking...</div>
+  <div class="ai-chat-action-indicator" id="ai-chat-action-indicator"></div>
+  <div class="ai-chat-input-bar">
+    <textarea class="ai-chat-input" id="ai-chat-input" placeholder="How can I help?" rows="1"></textarea>
+    <button class="ai-chat-send" id="ai-chat-send" title="Send">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
 <script>
   // index.html loads its engine as an ES module, which browsers refuse to run
   // over file://. If this page is opened straight from disk it fails silently,
@@ -2220,11 +2473,925 @@ window.addEventListener("beforeunload", e => {
   check();
 })();
 
+// ---------- AI assistant bridge ----------
+// The AI chat widget (classic script after this module) drives the editor
+// through this API. setSource routes through commitSourceChange so AI
+// edits are ordinary undo steps; validate dry-runs the full
+// parse -> solve pipeline so the assistant sees layout errors too, not
+// just parse errors.
+window.SwimlaneStudio = {
+  getContext() {
+    const checked = this.validate(editor.value);
+    return {
+      source: editor.value,
+      orientation: currentOrientation,
+      lanes: checked.lanes,
+      errors: checked.errors,
+    };
+  },
+  validate(src) {
+    try {
+      const m = parse(String(src));
+      m.orientation = currentOrientation;
+      solveLayout(m);
+      return { lanes: m.lanes.slice(), errors: m.errors.slice() };
+    } catch (e) {
+      return { lanes: [], errors: ["Layout error: " + e.message] };
+    }
+  },
+  setSource(src) {
+    commitSourceChange(String(src));
+    return this.getContext();
+  },
+  setOrientation(o) {
+    setOrientation(o);
+    return currentOrientation;
+  },
+};
+
 // initial load
 editor.value = savedSource != null ? savedSource : "";
 historyInit(editor.value);
 updateSourceHighlight();
 doRender();
+</script>
+
+<!-- AI Assistant chat widget script (classic script: survives the
+     single-file build untouched and runs over file:// too). Ported from
+     the Tool Hub Explorer assistant; the UI-controlling tools are
+     repurposed to create and modify the diagram source via
+     window.SwimlaneStudio. -->
+<script>
+(function() {
+  const toggleBtn = document.getElementById('ai-chat-toggle');
+  const chatPanel = document.getElementById('ai-chat-panel');
+  if (!chatPanel) return;
+  const messagesDiv = document.getElementById('ai-chat-messages');
+  const typingDiv = document.getElementById('ai-chat-typing');
+  const actionIndicator = document.getElementById('ai-chat-action-indicator');
+  const chatInput = document.getElementById('ai-chat-input');
+  const sendBtn = document.getElementById('ai-chat-send');
+  const minimizeBtn = document.getElementById('ai-chat-minimize');
+  const closeBtn = document.getElementById('ai-chat-close');
+  const settingsBtn = document.getElementById('ai-chat-settings-btn');
+  const settingsPanel = document.getElementById('ai-chat-settings');
+  const settingsSaveBtn = document.getElementById('ai-chat-settings-save');
+  const undockBtn = document.getElementById('ai-chat-undock');
+  const chatHeader = chatPanel.querySelector('.ai-chat-header');
+  const inputBar = chatPanel.querySelector('.ai-chat-input-bar');
+  const providerSelect = document.getElementById('ai-chat-provider');
+
+  // Canonical message format:
+  //   {role:'user', content:'text'}
+  //   {role:'assistant', content:[{type:'text',text:''},{type:'tool_call',id:'',name:'',arguments:{}}]}
+  //   {role:'tool_results', results:[{tool_call_id:'',tool_name:'',content:''}]}
+  let conversationHistory = [];
+  const MAX_HISTORY = 40;
+  let isSending = false;
+  let isUndocked = false;
+
+  // ── Settings (localStorage) — per-provider keys ──
+  const STORAGE_KEY_PROVIDER = 'swimlane_ai_provider';
+
+  function _sk(provider, field) { return `swimlane_ai_${provider}_${field}`; }
+  function getProvider() { return localStorage.getItem(STORAGE_KEY_PROVIDER) || 'anthropic'; }
+  function getApiKey() { return localStorage.getItem(_sk(getProvider(), 'key')) || ''; }
+  function getModel() { return localStorage.getItem(_sk(getProvider(), 'model')) || ''; }
+
+  // Show/hide provider-specific field groups
+  function _showProviderFields(prov) {
+    chatPanel.querySelectorAll('.ai-provider-fields').forEach(el => {
+      el.style.display = el.dataset.provider === prov ? '' : 'none';
+    });
+  }
+
+  function loadSettings() {
+    const prov = getProvider();
+    providerSelect.value = prov;
+    _showProviderFields(prov);
+    // Load per-provider values into their respective inputs
+    chatPanel.querySelectorAll('.ai-provider-fields').forEach(group => {
+      const p = group.dataset.provider;
+      group.querySelectorAll('[data-setting]').forEach(el => {
+        const val = localStorage.getItem(_sk(p, el.dataset.setting)) || '';
+        if (el.tagName === 'SELECT') el.value = val || el.options[0].value;
+        else el.value = val;
+      });
+    });
+  }
+
+  function saveSettings() {
+    const prov = providerSelect.value;
+    const prevProv = getProvider();
+    localStorage.setItem(STORAGE_KEY_PROVIDER, prov);
+    // Save all provider fields
+    chatPanel.querySelectorAll('.ai-provider-fields').forEach(group => {
+      const p = group.dataset.provider;
+      group.querySelectorAll('[data-setting]').forEach(el => {
+        localStorage.setItem(_sk(p, el.dataset.setting), el.value.trim());
+      });
+    });
+    // Reset chat if provider changed
+    if (prov !== prevProv) {
+      conversationHistory = [];
+      messagesDiv.innerHTML = '';
+      addMessage('assistant', 'Switched to **' + (PROVIDERS[prov] || {}).name + '**. Chat reset.');
+    }
+  }
+
+  providerSelect.addEventListener('change', () => _showProviderFields(providerSelect.value));
+  loadSettings();
+
+  settingsBtn.addEventListener('click', () => {
+    const isOpen = settingsPanel.classList.toggle('open');
+    messagesDiv.style.display = isOpen ? 'none' : 'flex';
+    typingDiv.style.display = isOpen ? 'none' : '';
+    inputBar.style.display = isOpen ? 'none' : 'flex';
+    if (isOpen) loadSettings();
+  });
+
+  settingsSaveBtn.addEventListener('click', () => {
+    saveSettings();
+    settingsPanel.classList.remove('open');
+    messagesDiv.style.display = 'flex';
+    inputBar.style.display = 'flex';
+    chatInput.focus();
+  });
+
+  // ── Visibility: always show toggle ──
+  toggleBtn.style.display = 'flex';
+
+  // ── Panel toggle ──
+  toggleBtn.addEventListener('click', () => {
+    chatPanel.classList.add('open');
+    toggleBtn.style.display = 'none';
+    if (!getApiKey()) {
+      settingsPanel.classList.add('open');
+      messagesDiv.style.display = 'none';
+      inputBar.style.display = 'none';
+    } else {
+      chatInput.focus();
+    }
+  });
+  minimizeBtn.addEventListener('click', () => {
+    chatPanel.classList.remove('open');
+    settingsPanel.classList.remove('open');
+    messagesDiv.style.display = 'flex';
+    inputBar.style.display = 'flex';
+    toggleBtn.style.display = 'flex';
+  });
+  closeBtn.addEventListener('click', () => {
+    chatPanel.classList.remove('open');
+    settingsPanel.classList.remove('open');
+    messagesDiv.style.display = 'flex';
+    inputBar.style.display = 'flex';
+    toggleBtn.style.display = 'flex';
+    if (isUndocked) dockChat();
+  });
+
+  // ── Undock / dock ──
+  const DOCKED_STYLE = { bottom: '24px', right: '24px', top: '', left: '', width: '360px', height: '460px' };
+
+  function undockChat() {
+    isUndocked = true;
+    chatPanel.classList.add('undocked');
+    // Position in center of viewport
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const w = 480, h = 520;
+    chatPanel.style.width = w + 'px';
+    chatPanel.style.height = h + 'px';
+    chatPanel.style.left = Math.max(40, (vw - w) / 2) + 'px';
+    chatPanel.style.top = Math.max(40, (vh - h) / 2) + 'px';
+    chatPanel.style.bottom = 'auto';
+    chatPanel.style.right = 'auto';
+    undockBtn.title = 'Dock';
+    undockBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+  }
+
+  function dockChat() {
+    isUndocked = false;
+    chatPanel.classList.remove('undocked');
+    chatPanel.style.width = DOCKED_STYLE.width;
+    chatPanel.style.height = DOCKED_STYLE.height;
+    chatPanel.style.bottom = DOCKED_STYLE.bottom;
+    chatPanel.style.right = DOCKED_STYLE.right;
+    chatPanel.style.top = '';
+    chatPanel.style.left = '';
+    undockBtn.title = 'Undock';
+    undockBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+  }
+
+  undockBtn.addEventListener('click', () => { isUndocked ? dockChat() : undockChat(); });
+
+  // ── Drag to move (undocked only) ──
+  let dragState = null;
+  chatHeader.addEventListener('mousedown', (e) => {
+    if (!isUndocked) return;
+    if (e.target.closest('.ai-chat-header-btn')) return; // don't drag when clicking buttons
+    e.preventDefault();
+    const rect = chatPanel.getBoundingClientRect();
+    dragState = { startX: e.clientX, startY: e.clientY, origLeft: rect.left, origTop: rect.top };
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragState) return;
+    const dx = e.clientX - dragState.startX;
+    const dy = e.clientY - dragState.startY;
+    chatPanel.style.left = (dragState.origLeft + dx) + 'px';
+    chatPanel.style.top = (dragState.origTop + dy) + 'px';
+  });
+  document.addEventListener('mouseup', () => { dragState = null; });
+
+  // ── Simple markdown rendering ──
+  function renderMarkdown(text) {
+    // Escape HTML
+    let html = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // Code blocks (```)
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, function(_m, _lang, code) {
+      return '<pre><code>' + code.replace(/\n$/, '') + '</code></pre>';
+    });
+
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Bold
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+    // Italic (single * or _)
+    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+    // Headings (must be done line-by-line before joining)
+    // Also horizontal rules
+    // Split into lines for list + table + heading processing
+    const lines = html.split('\n');
+    let result = [];
+    let inList = false;
+    let listType = null; // 'ul' or 'ol'
+
+    function parseTableRow(line) {
+      return line.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+    }
+    function isTableSep(line) {
+      return /^\|?(\s*:?-{2,}:?\s*\|)+\s*:?-{2,}:?\s*\|?$/.test(line.trim());
+    }
+    function isTableRow(line) {
+      return /^\|.+\|$/.test(line.trim());
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      // Horizontal rule
+      if (/^[-*_]{3,}$/.test(trimmed) && !inList) {
+        result.push('<hr>');
+        continue;
+      }
+
+      // Headings
+      const headingMatch = trimmed.match(/^(#{1,4})\s+(.*)/);
+      if (headingMatch) {
+        if (inList) { result.push(listType === 'ul' ? '</ul>' : '</ol>'); inList = false; listType = null; }
+        const level = headingMatch[1].length;
+        // Render as h4-h6 range to keep sizes reasonable inside the chat bubble
+        const tag = 'h' + Math.min(level + 3, 6);
+        result.push('<' + tag + ' style="margin:8px 0 4px;font-size:' + (level === 1 ? '15px' : level === 2 ? '14px' : '13px') + '">' + headingMatch[2] + '</' + tag + '>');
+        continue;
+      }
+
+      // Table detection: header row followed by separator row
+      if (isTableRow(line) && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+        if (inList) { result.push(listType === 'ul' ? '</ul>' : '</ol>'); inList = false; listType = null; }
+        const headers = parseTableRow(line);
+        let tableHtml = '<table><thead><tr>' + headers.map(h => '<th>' + h + '</th>').join('') + '</tr></thead><tbody>';
+        i += 2; // skip header + separator
+        while (i < lines.length && isTableRow(lines[i])) {
+          const cells = parseTableRow(lines[i]);
+          tableHtml += '<tr>' + cells.map(c => '<td>' + c + '</td>').join('') + '</tr>';
+          i++;
+        }
+        tableHtml += '</tbody></table>';
+        result.push(tableHtml);
+        i--; // compensate for loop increment
+        continue;
+      }
+
+      const ulMatch = line.match(/^(\s*)[-*]\s+(.*)/);
+      const olMatch = line.match(/^(\s*)\d+\.\s+(.*)/);
+
+      if (ulMatch) {
+        if (!inList || listType !== 'ul') {
+          if (inList) result.push(listType === 'ul' ? '</ul>' : '</ol>');
+          result.push('<ul>');
+          inList = true;
+          listType = 'ul';
+        }
+        result.push('<li>' + ulMatch[2] + '</li>');
+      } else if (olMatch) {
+        if (!inList || listType !== 'ol') {
+          if (inList) result.push(listType === 'ul' ? '</ul>' : '</ol>');
+          result.push('<ol>');
+          inList = true;
+          listType = 'ol';
+        }
+        result.push('<li>' + olMatch[2] + '</li>');
+      } else {
+        if (inList) {
+          result.push(listType === 'ul' ? '</ul>' : '</ol>');
+          inList = false;
+          listType = null;
+        }
+        result.push(line);
+      }
+    }
+    if (inList) result.push(listType === 'ul' ? '</ul>' : '</ol>');
+
+    html = result.join('\n');
+
+    // Convert remaining newlines to <br> (but not inside block elements)
+    html = html.replace(/\n/g, '<br>');
+    // Clean up <br> right before/after block elements
+    html = html.replace(/<br>(<\/?(?:pre|ul|ol|li|table|thead|tbody|tr|th|td|hr|h[1-6])[\s>])/g, '$1');
+    html = html.replace(/(<\/?(?:pre|ul|ol|li|table|thead|tbody|tr|th|td|hr|h[1-6])>)<br>/g, '$1');
+
+    return html;
+  }
+
+  // ── Message display ──
+  function addMessage(role, text) {
+    const div = document.createElement('div');
+    div.className = 'ai-chat-msg ' + role;
+    if (role === 'assistant') {
+      div.innerHTML = renderMarkdown(text);
+    } else {
+      div.textContent = text;
+    }
+    messagesDiv.appendChild(div);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+  function _pushHistory(msg) {
+    conversationHistory.push(msg);
+    if (conversationHistory.length > MAX_HISTORY) conversationHistory = conversationHistory.slice(-MAX_HISTORY);
+  }
+
+  function showTyping(text) { typingDiv.textContent = text || 'Thinking...'; typingDiv.classList.add('visible'); messagesDiv.scrollTop = messagesDiv.scrollHeight; }
+  function hideTyping() { typingDiv.classList.remove('visible'); }
+  function showActionIndicator(text) { actionIndicator.textContent = text; actionIndicator.classList.add('visible'); }
+  function hideActionIndicator() { actionIndicator.classList.remove('visible'); }
+
+  // ── Tool definitions (canonical — Anthropic input_schema format) ──
+  const AI_TOOLS = [
+    { name: 'get_source', description: 'Read the current diagram DSL source, plus the orientation, lane list, and any parse/layout errors.',
+      input_schema: { type: 'object', properties: {}, required: [] } },
+    { name: 'set_source', description: 'Replace the ENTIRE diagram source with new DSL text. The diagram re-renders immediately and the change lands on the undo stack. Returns the resulting state including any errors.',
+      input_schema: { type: 'object', properties: { source: { type: 'string', description: 'The complete new DSL source for the diagram (all lines, not just the changed ones)' } }, required: ['source'] } },
+    { name: 'validate_source', description: 'Check DSL source for parse/layout errors WITHOUT applying it to the editor. Use to verify a draft before set_source.',
+      input_schema: { type: 'object', properties: { source: { type: 'string', description: 'The DSL source to validate' } }, required: ['source'] } },
+    { name: 'set_orientation', description: 'Switch the rendering between horizontal (lanes stacked, time left-to-right) and vertical (lanes side-by-side, time top-to-bottom).',
+      input_schema: { type: 'object', properties: { orientation: { type: 'string', enum: ['horizontal', 'vertical'], description: 'The orientation to switch to' } }, required: ['orientation'] } },
+  ];
+
+  // ── DSL reference shared by the system prompt ──
+  const DSL_REFERENCE = `Swimlane DSL quick reference
+============================
+
+Boxes live in their SENDER's lane; arrows route to the target lane.
+
+  title: Order processing        Diagram title.
+  order: Customer, API, DB        Force lane order (else first-seen order).
+  Alice -> Bob: Send order        Cross-lane message (solid arrow).
+  Alice --> Bob: ACK              Cross-lane message (dashed, e.g. a reply).
+  Alice <- Bob: msg               Reversed: B sends to A (same as Bob -> Alice).
+  Alice -> Alice: Validate        Same-lane step; trails to next Alice box.
+  Alice <-> Bob: Sync             Bidirectional arrow.
+  Bob >-> Alice: Reply            Counter-pair reply sharing a column.
+  Alice <: Done                   Backward-only terminal box.
+  Alice: Read output              Standalone box (no arrow of its own).
+  [1] Alice -> Bob: Start         Tag this box "1" (the tag is not drawn).
+  Carol -> [1]: Retry             Loop back to the box tagged "1".
+  [ Section name ]                Section banner over the columns that follow.
+  note Alice: Inspect logs        Note attached to one lane.
+  note Alice, Bob: Window\\n2s      Multi-lane note (\\n or /n = line break).
+  # comment   // comment          Comment lines.
+
+Arrow captions: end a message with <...> to caption the arrow itself, e.g.
+  Browser -> Server: Send request <http POST>
+renders a "Send request" box with "http POST" beside the arrow.
+
+Loop-backs: prefix a line with "[tag] " to label the box it creates, then
+target "[tag]" from a later statement to draw a backward arc to that box.
+The tag is never displayed. A same-lane loop stays within its lane; a
+cross-lane loop routes through a channel above the lanes.
+
+Line breaks inside captions/labels/notes: write \\n or /n.`;
+
+  // ── System prompt builder (provider-agnostic) ──
+  function _buildSystemPrompt() {
+    const ST = window.SwimlaneStudio;
+    const ctx = ST ? ST.getContext() : { source: '', orientation: 'horizontal', lanes: [], errors: [] };
+    return `You are an AI assistant embedded in Swimlane Studio, an editor for swimlane / sequence-style diagrams written in a line-oriented DSL. You create and modify the diagram through tools.
+
+CRITICAL RULE — YOU MUST FOLLOW THIS:
+When the user asks you to create, draw, add, remove, change, fix, or rearrange ANYTHING in the diagram, you MUST call the set_source tool with the full updated DSL source. Do NOT just show or describe the source — actually call the tool. If you respond with text saying "I've updated the diagram" without having called set_source in the same turn, you are lying to the user. The user can see the diagram on their screen and will know if you didn't actually update it.
+
+Current UI state:
+- Orientation: ${ctx.orientation}
+- Lanes: ${ctx.lanes.join(', ') || '(none)'}
+- Errors: ${ctx.errors.length ? ctx.errors.join(' | ') : 'none'}
+- Current diagram source:
+${ctx.source.trim() ? ctx.source : '(empty — no diagram yet)'}
+
+${DSL_REFERENCE}
+
+How to use your tools:
+- set_source: REPLACES the whole document. Always pass every line you want to keep, not just the changed ones — anything you omit is deleted. When modifying an existing diagram, preserve all unrelated lines (title, order, comments, notes) exactly as they are. The tool returns the resulting state — review it, and if it reports errors, fix them and call set_source again.
+- validate_source: Dry-run a draft without touching the editor. Useful before set_source on larger rewrites.
+- get_source: Re-read the current state (the user may have edited the source by hand since your last change).
+- set_orientation: Switch horizontal/vertical rendering. Orientation is a view setting, not part of the source.
+
+Rules:
+- Never invent syntax that is not in the reference above.
+- The user may have hand-edited the source since your last turn — when in doubt, call get_source first rather than trusting the conversation history.
+- Every set_source lands on the undo stack, so the user can always Ctrl/Cmd+Z your change — no need to ask permission before editing.
+- Be concise. After calling set_source, briefly say what changed in the diagram. Do not paste the full source into chat (the user can see it in the editor); only quote specific lines when explaining something.`;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ── Provider adapters ──
+  // Each provider converts between canonical format and its wire format,
+  // handles streaming, and manages its own rate limits.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ── Shared SSE line parser ──
+  async function _parseSSELines(reader, onLine) {
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') return;
+          let parsed;
+          try { parsed = JSON.parse(data); } catch { continue; }
+          onLine(parsed);
+        }
+      }
+    }
+  }
+
+  // ── Shared retry wrapper ──
+  async function _retryOn429(makeRequest, onStatus) {
+    let resp = await makeRequest();
+    for (let attempt = 0; attempt < 5 && (resp.status === 429 || resp.status === 529); attempt++) {
+      // Try retry-after header first, then parse from error body
+      let waitSecs = parseInt(resp.headers.get('retry-after') || '0', 10);
+      if (!waitSecs) {
+        try {
+          const body = await resp.clone().json();
+          const msg = (body.error && body.error.message) || '';
+          const match = msg.match(/try again in (\d+\.?\d*)/i);
+          if (match) waitSecs = Math.ceil(parseFloat(match[1]));
+        } catch {}
+      }
+      waitSecs = Math.max(waitSecs, 2);
+      const label = resp.status === 529 ? 'API busy' : 'Rate limited';
+      for (let s = waitSecs; s > 0; s--) {
+        if (onStatus) onStatus(`${label} — retrying in ${s}s...`);
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      if (onStatus) onStatus('Retrying...');
+      resp = await makeRequest();
+    }
+    return resp;
+  }
+
+  // ── Shared error handler ──
+  async function _handleErrorResponse(resp) {
+    const err = await resp.json().catch(() => ({}));
+    const msg = (err.error && (err.error.message || err.error)) || err.message || `API error (${resp.status})`;
+    if (resp.status === 401) throw new Error('Invalid API key. Check your key in settings.');
+    throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+  }
+
+  // ────────────────────────────────────────
+  // Anthropic adapter
+  // ────────────────────────────────────────
+  const _anthropicRequestLog = [];
+  const ANTHROPIC_TIER_LIMITS = {
+    '1': { rpm: 50 }, '2': { rpm: 1000 }, '3': { rpm: 2000 }, '4': { rpm: 4000 },
+  };
+
+  const anthropicAdapter = {
+    name: 'Anthropic (Claude)',
+    defaultModel: 'claude-sonnet-4-6',
+
+    formatMessages(canonical) {
+      return canonical.map(msg => {
+        if (msg.role === 'tool_results') {
+          return { role: 'user', content: msg.results.map(r => ({
+            type: 'tool_result', tool_use_id: r.tool_call_id, content: r.content,
+          })) };
+        }
+        if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+          return { role: 'assistant', content: msg.content.map(b => {
+            if (b.type === 'tool_call') return { type: 'tool_use', id: b.id, name: b.name, input: b.arguments };
+            return b;
+          }) };
+        }
+        return msg;
+      });
+    },
+
+    formatTools(tools) { return tools; }, // already in Anthropic format
+
+    async callAPI({ apiKey, model, messages, tools, systemPrompt, onDelta, onStatus }) {
+      const tier = localStorage.getItem(_sk('anthropic', 'tier')) || '1';
+      const limits = ANTHROPIC_TIER_LIMITS[tier] || ANTHROPIC_TIER_LIMITS['1'];
+      // Proactive pacing
+      const now = Date.now();
+      while (_anthropicRequestLog.length && _anthropicRequestLog[0] < now - 60000) _anthropicRequestLog.shift();
+      const safeLimit = Math.max(1, Math.floor(limits.rpm * 0.9));
+      if (_anthropicRequestLog.length >= safeLimit) {
+        const waitUntil = _anthropicRequestLog[0] + 60000;
+        let rem = Math.ceil((waitUntil - Date.now()) / 1000);
+        while (rem > 0) {
+          if (onStatus) onStatus(`Pacing (${limits.rpm} RPM) — ${rem}s...`);
+          await new Promise(r => setTimeout(r, 1000));
+          rem = Math.ceil((waitUntil - Date.now()) / 1000);
+        }
+        while (_anthropicRequestLog.length && _anthropicRequestLog[0] < Date.now() - 60000) _anthropicRequestLog.shift();
+      }
+
+      const makeReq = () => fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true', 'content-type': 'application/json' },
+        body: JSON.stringify({ model, max_tokens: 8192, system: systemPrompt,
+          messages: anthropicAdapter.formatMessages(messages), tools, stream: true }),
+      });
+
+      let resp = await _retryOn429(makeReq, onStatus);
+      if (!resp.ok) await _handleErrorResponse(resp);
+      _anthropicRequestLog.push(Date.now());
+
+      // Parse Anthropic SSE
+      const blocks = [];
+      let currentBlock = null, toolInputJson = '', stopReason = null;
+      await _parseSSELines(resp.body.getReader(), (parsed) => {
+        const t = parsed.type;
+        if (t === 'content_block_start') {
+          const cb = parsed.content_block;
+          if (cb.type === 'text') currentBlock = { type: 'text', text: '' };
+          else if (cb.type === 'tool_use') { currentBlock = { type: 'tool_call', id: cb.id, name: cb.name, arguments: {} }; toolInputJson = ''; }
+          blocks.push(currentBlock);
+        } else if (t === 'content_block_delta') {
+          const d = parsed.delta;
+          if (d.type === 'text_delta' && currentBlock && currentBlock.type === 'text') {
+            currentBlock.text += d.text;
+            if (onDelta) onDelta(d.text);
+          } else if (d.type === 'input_json_delta' && currentBlock && currentBlock.type === 'tool_call') {
+            toolInputJson += d.partial_json;
+          }
+        } else if (t === 'content_block_stop') {
+          if (currentBlock && currentBlock.type === 'tool_call' && toolInputJson) {
+            try { currentBlock.arguments = JSON.parse(toolInputJson); } catch {}
+          }
+          currentBlock = null; toolInputJson = '';
+        } else if (t === 'message_delta') {
+          if (parsed.delta && parsed.delta.stop_reason) stopReason = parsed.delta.stop_reason;
+        } else if (t === 'error') {
+          throw new Error((parsed.error && parsed.error.message) || 'Stream error');
+        }
+      });
+      return { content: blocks, stop_reason: stopReason === 'tool_use' ? 'tool_call' : stopReason };
+    },
+  };
+
+  // ────────────────────────────────────────
+  // OpenAI adapter
+  // ────────────────────────────────────────
+  const openaiAdapter = {
+    name: 'OpenAI',
+    defaultModel: 'gpt-5.4',
+
+    formatMessages(canonical, systemPrompt) {
+      const msgs = [{ role: 'system', content: systemPrompt }];
+      for (const msg of canonical) {
+        if (msg.role === 'tool_results') {
+          for (const r of msg.results) {
+            msgs.push({ role: 'tool', tool_call_id: r.tool_call_id, content: r.content });
+          }
+        } else if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+          const text = msg.content.filter(b => b.type === 'text').map(b => b.text).join('');
+          const toolCalls = msg.content.filter(b => b.type === 'tool_call').map(b => ({
+            id: b.id, type: 'function',
+            function: { name: b.name, arguments: JSON.stringify(b.arguments) },
+          }));
+          msgs.push({ role: 'assistant', content: text || null,
+            ...(toolCalls.length ? { tool_calls: toolCalls } : {}) });
+        } else {
+          msgs.push({ role: msg.role, content: msg.content });
+        }
+      }
+      return msgs;
+    },
+
+    formatTools(tools) {
+      return tools.map(t => ({
+        type: 'function',
+        function: { name: t.name, description: t.description, parameters: t.input_schema },
+      }));
+    },
+
+    async callAPI({ apiKey, model, messages, tools, systemPrompt, onDelta, onStatus }) {
+      const makeReq = () => fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, max_completion_tokens: 8192, stream: true,
+          messages: openaiAdapter.formatMessages(messages, systemPrompt),
+          tools: openaiAdapter.formatTools(tools) }),
+      });
+
+      let resp = await _retryOn429(makeReq, onStatus);
+      if (!resp.ok) await _handleErrorResponse(resp);
+
+      // Parse OpenAI SSE — tool calls are streamed by index
+      const blocks = [];
+      let textBlock = null;
+      const toolCallAccum = {}; // index -> {id, name, arguments:''}
+      let stopReason = null;
+
+      await _parseSSELines(resp.body.getReader(), (parsed) => {
+        const delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
+        const finish = parsed.choices && parsed.choices[0] && parsed.choices[0].finish_reason;
+        if (finish) stopReason = finish;
+        if (!delta) return;
+        if (delta.content) {
+          if (!textBlock) { textBlock = { type: 'text', text: '' }; blocks.push(textBlock); }
+          textBlock.text += delta.content;
+          if (onDelta) onDelta(delta.content);
+        }
+        if (delta.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            const idx = tc.index;
+            if (!toolCallAccum[idx]) {
+              toolCallAccum[idx] = { id: tc.id || '', name: (tc.function && tc.function.name) || '', arguments: '' };
+            }
+            if (tc.id) toolCallAccum[idx].id = tc.id;
+            if (tc.function && tc.function.name) toolCallAccum[idx].name = tc.function.name;
+            if (tc.function && tc.function.arguments) toolCallAccum[idx].arguments += tc.function.arguments;
+          }
+        }
+      });
+
+      // Convert accumulated tool calls to canonical blocks
+      for (const idx of Object.keys(toolCallAccum).sort((a, b) => a - b)) {
+        const tc = toolCallAccum[idx];
+        let args = {};
+        try { args = JSON.parse(tc.arguments); } catch {}
+        blocks.push({ type: 'tool_call', id: tc.id, name: tc.name, arguments: args });
+      }
+      return { content: blocks, stop_reason: stopReason === 'tool_calls' ? 'tool_call' : stopReason };
+    },
+  };
+
+  // ────────────────────────────────────────
+  // Gemini adapter
+  // ────────────────────────────────────────
+  let _geminiCallId = 0;
+
+  const geminiAdapter = {
+    name: 'Google (Gemini)',
+    defaultModel: 'gemini-3.1-flash',
+
+    formatMessages(canonical) {
+      return canonical.map(msg => {
+        if (msg.role === 'user' && typeof msg.content === 'string') {
+          return { role: 'user', parts: [{ text: msg.content }] };
+        }
+        if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+          const parts = msg.content.map(b => {
+            if (b.type === 'text') return { text: b.text };
+            if (b.type === 'tool_call') return { functionCall: { name: b.name, args: b.arguments } };
+            return null;
+          }).filter(Boolean);
+          return { role: 'model', parts };
+        }
+        if (msg.role === 'tool_results') {
+          return { role: 'user', parts: msg.results.map(r => ({
+            functionResponse: { name: r.tool_name, response: { content: r.content } },
+          })) };
+        }
+        return { role: 'user', parts: [{ text: String(msg.content) }] };
+      });
+    },
+
+    formatTools(tools) {
+      return [{ functionDeclarations: tools.map(t => ({
+        name: t.name, description: t.description, parameters: t.input_schema,
+      })) }];
+    },
+
+    async callAPI({ apiKey, model, messages, tools, systemPrompt, onDelta, onStatus }) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${encodeURIComponent(apiKey)}&alt=sse`;
+      const makeReq = () => fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: systemPrompt }] },
+          contents: geminiAdapter.formatMessages(messages),
+          tools: geminiAdapter.formatTools(tools),
+        }),
+      });
+
+      let resp = await _retryOn429(makeReq, onStatus);
+      if (!resp.ok) await _handleErrorResponse(resp);
+
+      const blocks = [];
+      let textBlock = null;
+      let hasToolCalls = false;
+
+      await _parseSSELines(resp.body.getReader(), (parsed) => {
+        const parts = parsed.candidates && parsed.candidates[0] && parsed.candidates[0].content && parsed.candidates[0].content.parts;
+        if (!parts) return;
+        for (const part of parts) {
+          if (part.text) {
+            if (!textBlock) { textBlock = { type: 'text', text: '' }; blocks.push(textBlock); }
+            textBlock.text += part.text;
+            if (onDelta) onDelta(part.text);
+          }
+          if (part.functionCall) {
+            hasToolCalls = true;
+            blocks.push({
+              type: 'tool_call',
+              id: 'gemini_' + (++_geminiCallId),
+              name: part.functionCall.name,
+              arguments: part.functionCall.args || {},
+            });
+          }
+        }
+      });
+      return { content: blocks, stop_reason: hasToolCalls ? 'tool_call' : 'stop' };
+    },
+  };
+
+  // ── Provider registry ──
+  const PROVIDERS = { anthropic: anthropicAdapter, openai: openaiAdapter, gemini: geminiAdapter };
+  function getActiveProvider() { return PROVIDERS[getProvider()] || anthropicAdapter; }
+
+  // ── Execute a single tool use (provider-agnostic) ──
+  function _describeState(ctx) {
+    return 'Orientation: ' + ctx.orientation +
+      '\nLanes: ' + (ctx.lanes.join(', ') || '(none)') +
+      '\nErrors: ' + (ctx.errors.length ? '\n' + ctx.errors.join('\n') : 'none') +
+      '\nCurrent source:\n' + (ctx.source.trim() ? ctx.source : '(empty)');
+  }
+
+  async function executeTool(tc) {
+    const ST = window.SwimlaneStudio;
+    try {
+      if (!ST) return 'Error: the editor is still loading — try again.';
+      if (tc.name === 'get_source') {
+        showActionIndicator('Reading source...');
+        return _describeState(ST.getContext());
+      }
+      if (tc.name === 'set_source') {
+        showActionIndicator('Updating diagram...');
+        const ctx = ST.setSource(tc.arguments.source != null ? String(tc.arguments.source) : '');
+        let msg = 'Diagram updated.';
+        if (ctx.errors.length) {
+          msg = 'Diagram updated, but the source has errors — fix them with another set_source call.';
+        }
+        return msg + '\n' + _describeState(ctx);
+      }
+      if (tc.name === 'validate_source') {
+        showActionIndicator('Validating...');
+        const res = ST.validate(tc.arguments.source != null ? String(tc.arguments.source) : '');
+        if (res.errors.length) return 'Invalid:\n' + res.errors.join('\n');
+        return 'Valid. Lanes: ' + (res.lanes.join(', ') || '(none)');
+      }
+      if (tc.name === 'set_orientation') {
+        showActionIndicator('Setting orientation...');
+        const o = ST.setOrientation(tc.arguments.orientation);
+        return 'Orientation is now ' + o + '.';
+      }
+    } catch (e) {
+      return 'Error: ' + e.message;
+    } finally {
+      hideActionIndicator();
+    }
+    return 'Unknown tool: ' + tc.name;
+  }
+
+  // ── Streaming message element ──
+  function createStreamingMsg() {
+    const div = document.createElement('div');
+    div.className = 'ai-chat-msg assistant';
+    messagesDiv.appendChild(div);
+    let buf = '';
+    return {
+      append(text) { buf += text; div.innerHTML = renderMarkdown(buf); messagesDiv.scrollTop = messagesDiv.scrollHeight; },
+      getText() { return buf; },
+      finalize() { if (buf) div.innerHTML = renderMarkdown(buf); },
+      remove() { div.remove(); },
+    };
+  }
+
+  // ── Send message (provider-agnostic agentic loop with streaming) ──
+  async function sendMessage(userText) {
+    if (!userText.trim() || isSending) return;
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      addMessage('assistant', 'Please open settings (gear icon) and enter your API key first.');
+      return;
+    }
+    isSending = true;
+    sendBtn.disabled = true;
+
+    const provider = getActiveProvider();
+    addMessage('user', userText);
+    _pushHistory({ role: 'user', content: userText });
+
+    const systemPrompt = _buildSystemPrompt();
+    const model = getModel() || provider.defaultModel;
+    let streaming = null;
+
+    try {
+      for (let iter = 0; iter < 15; iter++) {
+        streaming = createStreamingMsg();
+        showTyping(iter === 0 ? 'Thinking...' : 'Processing...');
+
+        const result = await provider.callAPI({
+          apiKey, model, messages: conversationHistory, tools: AI_TOOLS,
+          systemPrompt,
+          onDelta(delta) { hideTyping(); streaming.append(delta); },
+          onStatus(status) { showTyping(status); },
+        });
+        hideTyping();
+        streaming.finalize();
+
+        const toolCalls = result.content.filter(b => b.type === 'tool_call');
+        if (!streaming.getText().trim()) streaming.remove();
+
+        _pushHistory({ role: 'assistant', content: result.content });
+
+        if (toolCalls.length === 0 || result.stop_reason !== 'tool_call') break;
+
+        const toolResults = [];
+        for (const tc of toolCalls) {
+          const res = await executeTool(tc);
+          toolResults.push({ tool_call_id: tc.id, tool_name: tc.name, content: res });
+        }
+        _pushHistory({ role: 'tool_results', results: toolResults });
+        streaming = null;
+      }
+    } catch (err) {
+      hideTyping();
+      if (streaming) streaming.remove();
+      addMessage('assistant', 'Sorry, I encountered an error: ' + err.message);
+    } finally {
+      hideActionIndicator();
+      isSending = false;
+      sendBtn.disabled = false;
+    }
+  }
+
+  // ── Input handling ──
+  sendBtn.addEventListener('click', () => {
+    const text = chatInput.value.trim();
+    if (text) {
+      chatInput.value = '';
+      chatInput.style.height = 'auto';
+      sendMessage(text);
+    }
+  });
+
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const text = chatInput.value.trim();
+      if (text) {
+        chatInput.value = '';
+        chatInput.style.height = 'auto';
+        sendMessage(text);
+      }
+    }
+  });
+
+  // Auto-resize textarea
+  chatInput.addEventListener('input', () => {
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 80) + 'px';
+  });
+})();
 </script>
 </body>
 </html>
