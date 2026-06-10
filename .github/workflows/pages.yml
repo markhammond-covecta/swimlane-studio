@@ -1,0 +1,53 @@
+# Build and deploy the GitHub Pages site on every push to main.
+#
+# Replaces the legacy "deploy from branch" Pages build so that the
+# self-contained swimlane-studio.html (gitignored, built by build.mjs)
+# is generated fresh and published alongside the live editor.
+
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build self-contained studio
+        run: node build.mjs
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site/lib _site/docs
+          cp index.html _site/
+          cp lib/swimlane-core.js _site/lib/
+          cp swimlane-studio.html _site/
+          cp docs/screenshot.png _site/docs/
+          cp README.md LICENSE _site/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
