@@ -3092,7 +3092,13 @@ Rules:
           const cb = parsed.content_block;
           if (cb.type === 'text') currentBlock = { type: 'text', text: '' };
           else if (cb.type === 'tool_use') { currentBlock = { type: 'tool_call', id: cb.id, name: cb.name, arguments: {} }; toolInputJson = ''; }
-          blocks.push(currentBlock);
+          // Newer models emit thinking blocks unrequested. Keep them (with
+          // their signatures) so they replay verbatim on the next turn —
+          // the API rejects assistant turns whose thinking was stripped.
+          else if (cb.type === 'thinking') currentBlock = { type: 'thinking', thinking: cb.thinking || '', signature: cb.signature || '' };
+          else if (cb.type === 'redacted_thinking') currentBlock = { type: 'redacted_thinking', data: cb.data || '' };
+          else currentBlock = null; // unknown block type — skip it, never push null
+          if (currentBlock) blocks.push(currentBlock);
         } else if (t === 'content_block_delta') {
           const d = parsed.delta;
           if (d.type === 'text_delta' && currentBlock && currentBlock.type === 'text') {
@@ -3100,6 +3106,10 @@ Rules:
             if (onDelta) onDelta(d.text);
           } else if (d.type === 'input_json_delta' && currentBlock && currentBlock.type === 'tool_call') {
             toolInputJson += d.partial_json;
+          } else if (d.type === 'thinking_delta' && currentBlock && currentBlock.type === 'thinking') {
+            currentBlock.thinking += d.thinking;
+          } else if (d.type === 'signature_delta' && currentBlock && currentBlock.type === 'thinking') {
+            currentBlock.signature = (currentBlock.signature || '') + d.signature;
           }
         } else if (t === 'content_block_stop') {
           if (currentBlock && currentBlock.type === 'tool_call' && toolInputJson) {
@@ -3454,6 +3464,8 @@ Rules:
         hideTyping();
         streaming.finalize();
 
+        // Safety net: an adapter must never yield null/undefined blocks
+        result.content = (result.content || []).filter(Boolean);
         const toolCalls = result.content.filter(b => b.type === 'tool_call');
         if (!streaming.getText().trim()) streaming.remove();
 
