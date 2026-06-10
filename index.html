@@ -854,6 +854,9 @@
   color: var(--ink); font-size: 13px; font-family: var(--mono);
 }
 .ai-chat-settings input:focus { border-color: var(--accent); outline: none; }
+/* Mask API keys visually without type="password" semantics, so password
+   managers (1Password etc.) don't offer to fill or save the field. */
+.ai-chat-key-input { -webkit-text-security: disc; }
 .ai-chat-settings .ai-chat-settings-hint {
   font-size: 11px; color: var(--ink-soft); margin-top: 2px;
 }
@@ -903,7 +906,7 @@
     <div class="ai-provider-fields" data-provider="anthropic">
       <div>
         <label>API Key</label>
-        <input type="password" data-setting="key" placeholder="sk-ant-..." autocomplete="off">
+        <input type="text" class="ai-chat-key-input" data-setting="key" placeholder="sk-ant-..." autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other">
       </div>
       <div>
         <label>Model</label>
@@ -925,7 +928,7 @@
     <div class="ai-provider-fields" data-provider="openai" style="display:none">
       <div>
         <label>API Key</label>
-        <input type="password" data-setting="key" placeholder="sk-..." autocomplete="off">
+        <input type="text" class="ai-chat-key-input" data-setting="key" placeholder="sk-..." autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other">
       </div>
       <div>
         <label>Model</label>
@@ -937,7 +940,7 @@
     <div class="ai-provider-fields" data-provider="gemini" style="display:none">
       <div>
         <label>API Key</label>
-        <input type="password" data-setting="key" placeholder="AI..." autocomplete="off">
+        <input type="text" class="ai-chat-key-input" data-setting="key" placeholder="AI..." autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other">
       </div>
       <div>
         <label>Model</label>
