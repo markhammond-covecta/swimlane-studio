@@ -907,8 +907,8 @@
       </div>
       <div>
         <label>Model</label>
-        <input type="text" data-setting="model" placeholder="claude-sonnet-4-6">
-        <div class="ai-chat-settings-hint">Default: claude-sonnet-4-6</div>
+        <input type="text" data-setting="model" placeholder="auto">
+        <div class="ai-chat-settings-hint">Leave blank to auto-select the newest, most capable Claude model from the API (falls back to claude-opus-4-8).</div>
       </div>
       <div>
         <label>API Tier</label>
@@ -929,8 +929,8 @@
       </div>
       <div>
         <label>Model</label>
-        <input type="text" data-setting="model" placeholder="gpt-5.4">
-        <div class="ai-chat-settings-hint">Default: gpt-5.4 (also: gpt-5.4-mini, gpt-5.4-pro)</div>
+        <input type="text" data-setting="model" placeholder="auto">
+        <div class="ai-chat-settings-hint">Leave blank to auto-select the newest flagship GPT model (falls back to gpt-5.4).</div>
       </div>
     </div>
     <!-- Gemini settings -->
@@ -941,8 +941,8 @@
       </div>
       <div>
         <label>Model</label>
-        <input type="text" data-setting="model" placeholder="gemini-3.1-flash">
-        <div class="ai-chat-settings-hint">Default: gemini-3.1-flash (also: gemini-3.1-pro, gemini-3.1-flash-lite)</div>
+        <input type="text" data-setting="model" placeholder="auto">
+        <div class="ai-chat-settings-hint">Leave blank to auto-select the newest Gemini Pro model (falls back to gemini-3.1-pro).</div>
       </div>
     </div>
     <div class="ai-chat-settings-hint" style="margin-top:4px">Stored in your browser only. Sent directly to the provider's API.</div>
@@ -2577,6 +2577,16 @@ doRender();
         if (el.tagName === 'SELECT') el.value = val || el.options[0].value;
         else el.value = val;
       });
+      // Surface the auto-selected model (if one has been discovered) in the hint
+      const modelInput = group.querySelector('[data-setting="model"]');
+      if (modelInput) {
+        const hint = modelInput.parentElement.querySelector('.ai-chat-settings-hint');
+        if (hint) {
+          if (!hint.dataset.base) hint.dataset.base = hint.textContent;
+          const auto = localStorage.getItem(_sk(p, 'model_auto'));
+          hint.textContent = hint.dataset.base + (auto ? ' Auto-selected: ' + auto + '.' : '');
+        }
+      }
     });
   }
 
@@ -2591,6 +2601,10 @@ doRender();
         localStorage.setItem(_sk(p, el.dataset.setting), el.value.trim());
       });
     });
+    // The key may have changed (different org = different model access), so
+    // drop the cached auto-selected model and re-discover on the next message.
+    localStorage.removeItem(_sk(prov, 'model_auto'));
+    localStorage.removeItem(_sk(prov, 'model_auto_at'));
     // Reset chat if provider changed
     if (prov !== prevProv) {
       conversationHistory = [];
@@ -2989,9 +3003,33 @@ Rules:
     '1': { rpm: 50 }, '2': { rpm: 1000 }, '3': { rpm: 2000 }, '4': { rpm: 4000 },
   };
 
+  // Pick the newest, most capable model from /v1/models (sorted newest-first;
+  // created_at sort is a safety net). Family rank: Fable (top tier), then
+  // Opus, Sonnet, Haiku — the first family with any release wins, and the
+  // newest release within it is chosen.
+  function _pickAnthropicModel(models) {
+    const sorted = models.slice().sort((a, b) =>
+      new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    for (const fam of ['fable', 'opus', 'sonnet', 'haiku']) {
+      const hit = sorted.find(m => typeof m.id === 'string' && m.id.startsWith('claude-' + fam + '-'));
+      if (hit) return hit.id;
+    }
+    return null;
+  }
+
   const anthropicAdapter = {
     name: 'Anthropic (Claude)',
-    defaultModel: 'claude-sonnet-4-6',
+    defaultModel: 'claude-opus-4-8',
+
+    async discoverModel(apiKey) {
+      const r = await fetch('https://api.anthropic.com/v1/models?limit=1000', {
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true' },
+      });
+      if (!r.ok) return null;
+      const d = await r.json();
+      return _pickAnthropicModel(d.data || []);
+    },
 
     formatMessages(canonical) {
       return canonical.map(msg => {
@@ -3078,9 +3116,29 @@ Rules:
   // ────────────────────────────────────────
   // OpenAI adapter
   // ────────────────────────────────────────
+  // Pick the newest flagship GPT model: a bare "gpt-N" / "gpt-N.N" id with no
+  // size/variant suffix (-mini, -nano, -pro, ...), newest `created` first.
+  // OpenAI allows browser CORS on GET /v1/models (verified), so discovery
+  // works even though POST /v1/chat/completions is CORS-blocked.
+  function _pickOpenAIModel(models) {
+    const flagship = models
+      .filter(m => /^gpt-\d+(?:\.\d+)?$/.test(m.id || ''))
+      .sort((a, b) => (b.created || 0) - (a.created || 0));
+    return flagship.length ? flagship[0].id : null;
+  }
+
   const openaiAdapter = {
     name: 'OpenAI',
     defaultModel: 'gpt-5.4',
+
+    async discoverModel(apiKey) {
+      const r = await fetch('https://api.openai.com/v1/models', {
+        headers: { 'Authorization': 'Bearer ' + apiKey },
+      });
+      if (!r.ok) return null;
+      const d = await r.json();
+      return _pickOpenAIModel(d.data || []);
+    },
 
     formatMessages(canonical, systemPrompt) {
       const msgs = [{ role: 'system', content: systemPrompt }];
@@ -3168,9 +3226,36 @@ Rules:
   // ────────────────────────────────────────
   let _geminiCallId = 0;
 
+  // Pick the newest Gemini model that supports generateContent: Pro tier
+  // preferred over Flash, stable releases preferred over preview/experimental,
+  // highest version number wins.
+  function _pickGeminiModel(models) {
+    const gen = models
+      .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+      .map(m => String(m.name || '').replace(/^models\//, ''))
+      .filter(id => /^gemini-\d/.test(id));
+    const ver = id => parseFloat((/^gemini-(\d+(?:\.\d+)?)/.exec(id) || [])[1] || '0');
+    for (const tier of ['-pro', '-flash']) {
+      let cands = gen.filter(id => id.includes(tier) && !id.includes('-lite'));
+      if (!cands.length) continue;
+      const stable = cands.filter(id => !/preview|exp/.test(id));
+      if (stable.length) cands = stable;
+      cands.sort((a, b) => ver(b) - ver(a) || b.localeCompare(a));
+      return cands[0];
+    }
+    return gen[0] || null;
+  }
+
   const geminiAdapter = {
     name: 'Google (Gemini)',
-    defaultModel: 'gemini-3.1-flash',
+    defaultModel: 'gemini-3.1-pro',
+
+    async discoverModel(apiKey) {
+      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=' + encodeURIComponent(apiKey));
+      if (!r.ok) return null;
+      const d = await r.json();
+      return _pickGeminiModel(d.models || []);
+    },
 
     formatMessages(canonical) {
       return canonical.map(msg => {
@@ -3247,6 +3332,29 @@ Rules:
   const PROVIDERS = { anthropic: anthropicAdapter, openai: openaiAdapter, gemini: geminiAdapter };
   function getActiveProvider() { return PROVIDERS[getProvider()] || anthropicAdapter; }
 
+  // ── Automatic model selection ──
+  // When the Model field is blank, the best current model is discovered from
+  // the provider's models endpoint and cached for a day (the cache is also
+  // dropped whenever settings are saved). If discovery fails — bad key,
+  // network, or a CORS-blocked provider — fall back to the last discovered
+  // model, then to the adapter's hardcoded default.
+  const AUTO_MODEL_TTL = 24 * 60 * 60 * 1000;
+  async function resolveAutoModel(provider, apiKey) {
+    const prov = getProvider();
+    const cached = localStorage.getItem(_sk(prov, 'model_auto')) || '';
+    const cachedAt = parseInt(localStorage.getItem(_sk(prov, 'model_auto_at')) || '0', 10);
+    if (cached && Date.now() - cachedAt < AUTO_MODEL_TTL) return cached;
+    try {
+      const id = await provider.discoverModel(apiKey);
+      if (id) {
+        localStorage.setItem(_sk(prov, 'model_auto'), id);
+        localStorage.setItem(_sk(prov, 'model_auto_at'), String(Date.now()));
+        return id;
+      }
+    } catch {}
+    return cached || provider.defaultModel;
+  }
+
   // ── Execute a single tool use (provider-agnostic) ──
   function _describeState(ctx) {
     return 'Orientation: ' + ctx.orientation +
@@ -3321,7 +3429,12 @@ Rules:
     _pushHistory({ role: 'user', content: userText });
 
     const systemPrompt = _buildSystemPrompt();
-    const model = getModel() || provider.defaultModel;
+    let model = getModel();
+    if (!model) {
+      showTyping('Selecting model...');
+      model = await resolveAutoModel(provider, apiKey);
+      hideTyping();
+    }
     let streaming = null;
 
     try {
