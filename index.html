@@ -911,7 +911,7 @@
       <div>
         <label>Model</label>
         <input type="text" data-setting="model" placeholder="auto">
-        <div class="ai-chat-settings-hint">Leave blank to auto-select the newest, most capable Claude model from the API (falls back to claude-opus-4-8).</div>
+        <div class="ai-chat-settings-hint">Leave blank to auto-select the newest Sonnet-class Claude model from the API (falls back to claude-sonnet-4-6).</div>
       </div>
       <div>
         <label>API Tier</label>
@@ -945,7 +945,7 @@
       <div>
         <label>Model</label>
         <input type="text" data-setting="model" placeholder="auto">
-        <div class="ai-chat-settings-hint">Leave blank to auto-select the newest Gemini Pro model (falls back to gemini-3.1-pro).</div>
+        <div class="ai-chat-settings-hint">Leave blank to auto-select the newest Gemini Flash model (falls back to gemini-3.1-flash).</div>
       </div>
     </div>
     <div class="ai-chat-settings-hint" style="margin-top:4px">Stored in your browser only. Sent directly to the provider's API.</div>
@@ -2608,6 +2608,7 @@ doRender();
     // drop the cached auto-selected model and re-discover on the next message.
     localStorage.removeItem(_sk(prov, 'model_auto'));
     localStorage.removeItem(_sk(prov, 'model_auto_at'));
+    localStorage.removeItem(_sk(prov, 'model_auto_v'));
     // Reset chat if provider changed
     if (prov !== prevProv) {
       conversationHistory = [];
@@ -3006,14 +3007,15 @@ Rules:
     '1': { rpm: 50 }, '2': { rpm: 1000 }, '3': { rpm: 2000 }, '4': { rpm: 4000 },
   };
 
-  // Pick the newest, most capable model from /v1/models (sorted newest-first;
-  // created_at sort is a safety net). Family rank: Fable (top tier), then
-  // Opus, Sonnet, Haiku — the first family with any release wins, and the
-  // newest release within it is chosen.
+  // Pick the newest balanced-tier model from /v1/models (sorted newest-first;
+  // created_at sort is a safety net). Sonnet is plenty for diagram editing
+  // and far cheaper than the top tiers, so the rank is Sonnet, then Haiku,
+  // with Opus/Fable only as a last resort — never auto-pick the expensive
+  // models; users can type one into the Model field if they want it.
   function _pickAnthropicModel(models) {
     const sorted = models.slice().sort((a, b) =>
       new Date(b.created_at || 0) - new Date(a.created_at || 0));
-    for (const fam of ['fable', 'opus', 'sonnet', 'haiku']) {
+    for (const fam of ['sonnet', 'haiku', 'opus', 'fable']) {
       const hit = sorted.find(m => typeof m.id === 'string' && m.id.startsWith('claude-' + fam + '-'));
       if (hit) return hit.id;
     }
@@ -3022,7 +3024,7 @@ Rules:
 
   const anthropicAdapter = {
     name: 'Anthropic (Claude)',
-    defaultModel: 'claude-opus-4-8',
+    defaultModel: 'claude-sonnet-4-6',
 
     async discoverModel(apiKey) {
       const r = await fetch('https://api.anthropic.com/v1/models?limit=1000', {
@@ -3239,8 +3241,9 @@ Rules:
   // ────────────────────────────────────────
   let _geminiCallId = 0;
 
-  // Pick the newest Gemini model that supports generateContent: Pro tier
-  // preferred over Flash, stable releases preferred over preview/experimental,
+  // Pick the newest Gemini model that supports generateContent: Flash tier
+  // (the balanced/affordable tier, Sonnet's equivalent) preferred over Pro,
+  // -lite excluded, stable releases preferred over preview/experimental,
   // highest version number wins.
   function _pickGeminiModel(models) {
     const gen = models
@@ -3248,7 +3251,7 @@ Rules:
       .map(m => String(m.name || '').replace(/^models\//, ''))
       .filter(id => /^gemini-\d/.test(id));
     const ver = id => parseFloat((/^gemini-(\d+(?:\.\d+)?)/.exec(id) || [])[1] || '0');
-    for (const tier of ['-pro', '-flash']) {
+    for (const tier of ['-flash', '-pro']) {
       let cands = gen.filter(id => id.includes(tier) && !id.includes('-lite'));
       if (!cands.length) continue;
       const stable = cands.filter(id => !/preview|exp/.test(id));
@@ -3261,7 +3264,7 @@ Rules:
 
   const geminiAdapter = {
     name: 'Google (Gemini)',
-    defaultModel: 'gemini-3.1-pro',
+    defaultModel: 'gemini-3.1-flash',
 
     async discoverModel(apiKey) {
       const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=' + encodeURIComponent(apiKey));
@@ -3352,9 +3355,13 @@ Rules:
   // network, or a CORS-blocked provider — fall back to the last discovered
   // model, then to the adapter's hardcoded default.
   const AUTO_MODEL_TTL = 24 * 60 * 60 * 1000;
+  // Bumped whenever the selection policy changes, so a pick cached under an
+  // old policy (e.g. the earlier most-capable-model rule) is discarded.
+  const AUTO_MODEL_POLICY = '2';
   async function resolveAutoModel(provider, apiKey) {
     const prov = getProvider();
-    const cached = localStorage.getItem(_sk(prov, 'model_auto')) || '';
+    let cached = localStorage.getItem(_sk(prov, 'model_auto')) || '';
+    if (localStorage.getItem(_sk(prov, 'model_auto_v')) !== AUTO_MODEL_POLICY) cached = '';
     const cachedAt = parseInt(localStorage.getItem(_sk(prov, 'model_auto_at')) || '0', 10);
     if (cached && Date.now() - cachedAt < AUTO_MODEL_TTL) return cached;
     try {
@@ -3362,6 +3369,7 @@ Rules:
       if (id) {
         localStorage.setItem(_sk(prov, 'model_auto'), id);
         localStorage.setItem(_sk(prov, 'model_auto_at'), String(Date.now()));
+        localStorage.setItem(_sk(prov, 'model_auto_v'), AUTO_MODEL_POLICY);
         return id;
       }
     } catch {}
