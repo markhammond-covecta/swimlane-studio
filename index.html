@@ -2851,6 +2851,24 @@ doRender();
           listType = 'ol';
         }
         result.push('<li>' + olMatch[2] + '</li>');
+      } else if (trimmed === '' && inList) {
+        // Blank line inside a list: keep the list open if another item of the
+        // same type follows (markdown "loose" lists), otherwise close it.
+        // Without this, each blank-separated item would open a fresh <ol> and
+        // the browser would restart numbering at 1 for every item.
+        let j = i + 1;
+        while (j < lines.length && lines[j].trim() === '') j++;
+        const next = j < lines.length ? lines[j] : '';
+        const nextIsSameList = listType === 'ul'
+          ? /^(\s*)[-*]\s+/.test(next)
+          : /^(\s*)\d+\.\s+/.test(next);
+        if (nextIsSameList) {
+          continue; // swallow the blank, stay in the list
+        }
+        result.push(listType === 'ul' ? '</ul>' : '</ol>');
+        inList = false;
+        listType = null;
+        result.push(line);
       } else {
         if (inList) {
           result.push(listType === 'ul' ? '</ul>' : '</ol>');
