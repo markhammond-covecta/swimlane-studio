@@ -669,6 +669,7 @@
         <tr><td><code>A &lt;: text</code></td><td>Backward-only box: a labelled box in lane A with just an incoming trail from the previous same-lane box.</td></tr>
         <tr><td><code>A: text</code></td><td>Standalone box: a labelled box in lane A with no arrows of its own. A preceding cross-lane arrow will still land on it.</td></tr>
         <tr><td><code>A -&gt; A: text</code></td><td>Same-lane forward link. The box sits in lane A and a horizontal arrow trails to the next same-lane box.</td></tr>
+        <tr><td><code>A -&gt; B: msg &lt;label&gt;</code></td><td>Text on the arrow itself. A trailing <code>&lt;...&gt;</code> becomes the arrow's italic side-label; the rest stays in the box. Works with any arrow type, e.g. <code>A -&gt; B: Send request &lt;http POST&gt;</code>.</td></tr>
         <tr><td><code>[1] A -&gt; B: text</code></td><td>Tag the box this line creates as <code>1</code> (any name works). The tag is never drawn; it just gives a later statement a loop-back target.</td></tr>
         <tr><td><code>C -&gt; [1]: text</code></td><td>Loop back to the box tagged <code>1</code>: a box in lane C with a backward arc to the tagged box. A same-lane loop stays within its lane; a cross-lane loop routes through a channel above the lanes. The arc never crosses a box, and breaks where it crosses another connector.</td></tr>
       </table>
