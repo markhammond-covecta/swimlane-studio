@@ -8,9 +8,10 @@
 // drives the Swimlane Studio web app, so diagrams render identically.
 //
 // Tools:
-//   render_swimlane   - DSL -> SVG / PNG / ASCII (optionally written to disk)
-//   validate_swimlane - parse only; report lanes, counts, and errors
-//   swimlane_syntax   - return the DSL cheat-sheet
+//   render_swimlane          - DSL -> SVG / PNG / ASCII (optionally written to disk)
+//   generate_swimlane_script - validate DSL and return/save the script; no diagram
+//   validate_swimlane        - parse only; report lanes, counts, and errors
+//   swimlane_syntax          - return the DSL cheat-sheet
 
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -98,8 +99,9 @@ const server = new McpServer(
       `chosen format, default "${DEFAULT_FORMAT}" — in a plain terminal, ` +
       `reproduce that ASCII in a code block so the user sees it. Request ` +
       `"png", "svg", or "all" to export an image/vector (usually with ` +
-      `save_path). Use validate_swimlane to check syntax cheaply, and ` +
-      `swimlane_syntax for the full grammar.\n\n` +
+      `save_path). Use generate_swimlane_script when the user wants the DSL ` +
+      `script itself rather than a diagram, validate_swimlane to check syntax ` +
+      `cheaply, and swimlane_syntax for the full grammar.\n\n` +
       SYNTAX,
   },
 );
@@ -260,6 +262,59 @@ registerAppTool(
     }
     if (!content.length) content.push({ type: "text", text: "(nothing rendered)" });
 
+    return { content, structuredContent: structured };
+  },
+);
+
+server.registerTool(
+  "generate_swimlane_script",
+  {
+    title: "Generate swimlane script",
+    description:
+      "Produce the swimlane DSL script itself — no diagram is rendered. " +
+      "Validates the source, then returns the script text and, if save_path " +
+      "is given, writes it to disk. Use this when the user wants the DSL " +
+      "source (e.g. a .swml file) rather than an SVG/PNG/ASCII diagram. Call " +
+      "swimlane_syntax if unsure of the DSL.",
+    inputSchema: {
+      source: z.string().describe("The swimlane DSL source (see swimlane_syntax)."),
+      save_path: z
+        .string()
+        .optional()
+        .describe(
+          "Absolute path to write the script to (e.g. an .swml or .txt file). " +
+          "The source is written verbatim.",
+        ),
+    },
+  },
+  async ({ source, save_path }) => {
+    const m = parse(source);
+    const messages = m.events.filter((e) => e.type === "message").length;
+    const notes = m.events.filter((e) => e.type === "note").length;
+    const structured = {
+      ok: m.errors.length === 0,
+      script: source,
+      lanes: m.lanes,
+      title: m.title || null,
+      messages,
+      notes,
+      sections: m.sections.map((s) => s.label),
+      errors: m.errors,
+    };
+
+    const content = [];
+    if (save_path) {
+      await fs.writeFile(save_path, source);
+      structured.written = [save_path];
+      content.push({ type: "text", text: `Wrote script: ${save_path}` });
+    }
+    content.push({ type: "text", text: source });
+    if (m.errors.length) {
+      content.push({
+        type: "text",
+        text: `Parse warnings:\n${m.errors.join("\n")}`,
+      });
+    }
     return { content, structuredContent: structured };
   },
 );

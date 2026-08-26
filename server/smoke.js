@@ -35,7 +35,7 @@ await client.connect(transport);
 
 const { tools } = await client.listTools();
 console.log("Tools:", tools.map((t) => t.name).join(", "));
-check(tools.length === 3, "exposes 3 tools");
+check(tools.length === 4, "exposes 4 tools");
 
 // MCP App wiring: render_swimlane references the UI resource, which lists and
 // reads as a self-contained HTML view with the MCP App MIME type.
@@ -59,6 +59,18 @@ check(okv.structuredContent.lanes.join(",") === "User,Browser,Server", "validate
 
 const badv = await client.callTool({ name: "validate_swimlane", arguments: { source: "this is nonsense ((" } });
 check(badv.isError === true, "validate: nonsense flagged as error");
+
+// 2b. generate_swimlane_script (return + save; no diagram)
+const gen = await client.callTool({ name: "generate_swimlane_script", arguments: { source: SOURCE } });
+check(gen.structuredContent.script === SOURCE, "generate script: returns the source verbatim");
+check(gen.structuredContent.ok === true, "generate script: clean source ok");
+check(!gen.content.some((c) => c.type === "image" || /<svg/.test(c.text || "")), "generate script: no diagram in output");
+const genDir = await fs.mkdtemp(path.join(os.tmpdir(), "swimlane-"));
+const scriptPath = path.join(genDir, "diagram.swml");
+const genSaved = await client.callTool({ name: "generate_swimlane_script", arguments: { source: SOURCE, save_path: scriptPath } });
+check((genSaved.structuredContent.written || [])[0] === scriptPath, "generate script: reports written path");
+check((await fs.readFile(scriptPath, "utf8")) === SOURCE, "generate script: file written verbatim");
+await fs.rm(genDir, { recursive: true, force: true });
 
 // 3. render svg
 const svg = await client.callTool({ name: "render_swimlane", arguments: { source: SOURCE, format: "svg" } });

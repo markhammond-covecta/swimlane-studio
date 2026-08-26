@@ -247,7 +247,7 @@ Add an entry to the client's MCP config (for Claude Desktop, this is
 }
 ```
 
-Restart the client and the three tools below become available.
+Restart the client and the four tools below become available.
 
 ### Inline interactive viewer (MCP App hosts)
 
@@ -267,6 +267,7 @@ editing the viewer source under `server/app/`.
 | Tool | Input | Output |
 | --- | --- | --- |
 | `render_swimlane` | `source`, `orientation?` (`horizontal`/`vertical`), `format?` (`svg`/`png`/`ascii`/`all`), `scale?`, `save_path?` | SVG text, a PNG image, ASCII art, or all three; optionally written to disk. |
+| `generate_swimlane_script` | `source`, `save_path?` | The DSL script text (validated), optionally written verbatim to disk — the script only, no diagram. |
 | `validate_swimlane` | `source` | Detected lanes (in order), message/note/section counts, and parse errors — a cheap syntax check before rendering. |
 | `swimlane_syntax` | — | The DSL cheat-sheet. |
 
@@ -294,7 +295,7 @@ self-contained rendering capability for any MCP client.
 | --- | --- |
 | `lib/swimlane-core.js` | The framework-free, DOM-optional diagram engine shared by the web app and the MCP server. Exports `parse`, `solveLayout`, `render`, `renderAscii`, `wrap`, and friends. `measureTextPx` falls back to a font-size-aware estimate when no canvas is available (i.e. under Node). |
 | `index.html` | The single-page app: `<style>` theme/panes/toggles/help modal, plus the driver that imports the engine and hooks it to the editor, hot-reload, persistence, zoom, orientation, New/Load/Save, and exports. |
-| `server/server.js` | The stdio MCP server (`render_swimlane`, `validate_swimlane`, `swimlane_syntax`). |
+| `server/server.js` | The stdio MCP server (`render_swimlane`, `generate_swimlane_script`, `validate_swimlane`, `swimlane_syntax`). |
 | `server/smoke.js` | End-to-end smoke test that spawns the server over stdio and calls every tool. |
 | `.claude/skills/swimlane/` | The Claude Code skill wrapping the server. |
 

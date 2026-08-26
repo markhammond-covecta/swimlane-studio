@@ -1,6 +1,6 @@
 ---
 name: swimlane
-description: Author swimlane / sequence-style diagrams and render them to SVG, PNG, or ASCII via the swimlane MCP server. Use whenever the user wants to draw, generate, sketch, or export a swimlane diagram, sequence diagram, process/flow diagram, message-passing diagram, or "who-does-what" lane diagram — phrases like "draw a swimlane of X", "diagram this flow", "show the request/response sequence", "make a swimlane for the login process", "render this as ASCII", or any request to turn a described process into lanes-and-arrows. This skill carries the full DSL; consult it before writing diagram source.
+description: Author swimlane / sequence-style diagrams and render them to SVG, PNG, or ASCII via the swimlane MCP server — or return the DSL script itself instead of a rendered diagram. Use whenever the user wants to draw, generate, sketch, or export a swimlane diagram, sequence diagram, process/flow diagram, message-passing diagram, or "who-does-what" lane diagram — phrases like "draw a swimlane of X", "diagram this flow", "show the request/response sequence", "make a swimlane for the login process", "render this as ASCII", or any request to turn a described process into lanes-and-arrows. Also use when the user wants the swimlane DSL/script/source as the output rather than the diagram — "give me the DSL", "just the script", "don't render it", "output as DSL". This skill carries the full DSL; consult it before writing diagram source.
 ---
 
 # Swimlane diagrams
@@ -11,7 +11,7 @@ lane. Time flows left-to-right (horizontal) or top-to-bottom (vertical).
 
 ## Tools
 
-The MCP server exposes three tools (prefixed `mcp__swimlane__`):
+The MCP server exposes four tools (prefixed `mcp__swimlane__`):
 
 - **`render_swimlane`** — `{ source, orientation?, format?, scale?, save_path? }`
   - **Inline view:** this tool is an *MCP App*. In hosts that support MCP Apps (e.g. Claude Desktop) the diagram is drawn automatically as an interactive inline SVG view — you don't do anything to trigger it; just call the tool.
@@ -19,6 +19,7 @@ The MCP server exposes three tools (prefixed `mcp__swimlane__`):
   - `orientation`: `"horizontal"` (default) or `"vertical"`. ASCII is always horizontal.
   - `scale`: PNG raster factor (default 2).
   - `save_path`: absolute path to write to. For `"all"` it is a basename and `.svg`/`.png`/`.txt` are written.
+- **`generate_swimlane_script`** — `{ source, save_path? }` → returns the DSL script text (and writes it verbatim to `save_path` if given). **No diagram is rendered.** Use this when the user wants the DSL source itself — e.g. an `.swml` file — rather than an SVG/PNG/ASCII diagram.
 - **`validate_swimlane`** — `{ source }` → lanes, counts, and parse errors. Cheap syntax check.
 - **`swimlane_syntax`** — the DSL cheat-sheet (this skill already contains it below).
 
@@ -28,18 +29,30 @@ If the server is not registered, see "Setup" at the bottom.
 
 1. Turn the user's process into DSL using the reference below. Put each
    actor/system in its own lane; each step is a box in the lane of whoever
-   performs it. **Prefer a connected flow** — see below.
+   performs it. **Prefer a connected flow** — see below. You author the DSL
+   from the natural-language request; the server does not do that step.
 2. For anything non-trivial, call `validate_swimlane` first to confirm the
    lanes and catch unparseable lines.
-3. Call `render_swimlane` and **leave `format` unset** — it defaults to `ascii`,
-   which displays inline in chat on every host. Set `format` only to export a
-   file the user asked for: `png` (raster) or `svg` (vector), normally with
-   `save_path`; `all` to write every format to disk.
-4. If the user wants a file, pass `save_path` (absolute).
+3. **Decide what the user asked for — the diagram, or the DSL script itself:**
+   - **A diagram (the default):** call `render_swimlane` and **leave `format`
+     unset** — it defaults to `ascii`, which displays inline in chat on every
+     host. Set `format` only to export a file the user asked for: `png`
+     (raster) or `svg` (vector), normally with `save_path`; `all` to write
+     every format to disk.
+   - **The DSL script only (no diagram):** call `generate_swimlane_script`
+     with the `source` you authored. It validates the DSL and returns the
+     script text without rendering anything. Reproduce that script in a fenced
+     code block in your reply. Trigger this whenever the user asks for the
+     "DSL", "script", "source", "the text", "just the code", "don't render",
+     "output as DSL", and so on.
+4. If the user wants a file, pass `save_path` (absolute) — to `render_swimlane`
+   for a diagram file, or to `generate_swimlane_script` to save the DSL itself
+   (e.g. an `.swml` file).
 
-**Always render — never just describe.** The rendered diagram is the
-deliverable; a prose walk-through of the lanes is not a substitute and does not
-count as producing the diagram. Always call `render_swimlane`.
+**Always produce the deliverable — never just describe it.** The rendered
+diagram (or, when the DSL is what was asked for, the script) is the deliverable;
+a prose walk-through of the lanes is not a substitute. Always call
+`render_swimlane` (or `generate_swimlane_script` for the DSL path).
 
 - In an **MCP App host (Claude Desktop)** the inline SVG view appears on its
   own once the tool runs — that *is* the diagram; you needn't echo anything.
@@ -49,20 +62,29 @@ count as producing the diagram. Always call `render_swimlane`.
 
 Keep any commentary short and put it after the diagram, not instead of it.
 
-## Prefer connected flows (preferred form)
+## Every arrow must terminate at a box
 
-Write the steps so each arrow lands on the **next box**, giving one
-continuous chain rather than arrows that stop in empty lane space. The rule:
+This is a hard requirement, not a stylistic preference: **no arrow may lead
+into empty space.** Every arrow — incoming or outgoing — has to start and end
+on a box. A diagram with a dangling arrowhead (a `►` or `▼` pointing at
+nothing) reads as broken. After rendering, scan the output for any arrowhead
+that does not land on a box and fix it before delivering.
+
+There are two ways an arrow ends up dangling, each with a specific fix.
+
+### 1. Target lane has no box for the arrow to land on
+
+Each box is owned by its *sender*, and a cross-lane arrow connects to the
+**next box in its target lane**. So the rule for a connected chain:
 
 > **The actor a message is sent TO should be the actor the NEXT message is
 > sent FROM.**
 
-Each box is owned by its *sender*, and a cross-lane arrow connects to the
-next box in its *target* lane. So when the target of one step is the sender
-of the next, the arrow lands on that box and the diagram reads as a single
-connected path (`A -> B`, then `B -> C`, then `C -> ...`).
+When the target of one step is the sender of the next, the arrow lands on
+that box and the diagram reads as a single connected path (`A -> B`, then
+`B -> C`, then `C -> ...`).
 
-Connected (preferred) — every arrow lands on a box:
+Connected — every arrow lands on a box:
 
 ```
 Customer -> Barista: Place order
@@ -71,20 +93,52 @@ Machine  -> Barista: Ready
 Barista  -> Customer: Serve coffee
 ```
 
-Disconnected (avoid) — the target lane has no follow-up box, so the arrow
-dangles into empty space:
+Disconnected — the target lane (`Barista`) never sends anything after, so
+nothing receives the arrows and they dangle:
 
 ```
 Customer -> Barista: Place order
 Customer -> Barista: Pay
 ```
 
-If the next real step genuinely starts from the same actor again, keep them
-in that actor's lane with a same-lane step (`Barista -> Barista: Grind beans`)
-so the chain stays visibly linked. Only let an arrow point into an empty
-lane when the flow truly ends at that actor (e.g. a final hand-off back to
-the user). This matters most for `ascii` output, where a connected chain is
-far more readable than scattered arrowheads.
+This bites hardest with **output / sink lanes** (artefacts, results, an
+"Outputs" lane). `Compiler -> Output: write config` puts the box in the
+*Compiler* lane and fires an arrow at an empty `Output` lane. To put real
+boxes in that lane, make the lane the *sender* — chain the outputs from it:
+
+```
+Compiler -> Output: write outputs
+Output -> Output: workflow_config.json
+Output -> Output: agent_profile.html
+Output: build_report + log
+```
+
+The first cross-lane arrow now lands on `workflow_config.json`, and the
+same-lane chain links the rest.
+
+### 2. The last box in a same-lane chain emits a trailing stub
+
+A same-lane step (`X -> X: ...`) always draws an **outgoing** arrow that
+expects a following `X` box to trail into. On the *last* box of the chain
+there is no follow-up, so it renders a short arrow into empty space — a
+dangling stub even though the box itself is fine.
+
+Fix: make the final box one that has **no outgoing trail**:
+
+- `Lane: label` — a standalone box (no arrow of its own). Best for a plain
+  terminal output.
+- `Lane <: label` — a backward-only terminal box (incoming link, no outgoing
+  trail). Use when the last step is a reply/hand-off.
+
+```
+Output -> Output: workflow_config.json   # arrow trails to the next box
+Output -> Output: agent_profile.html     # arrow trails to the next box
+Output: build_report + log               # standalone: no trailing stub
+```
+
+So: end every same-lane chain with a standalone (`Lane:`) or backward-only
+(`<:`) box, and give every sink lane its own boxes. This matters most for
+`ascii` output, where a stray arrowhead is glaringly visible.
 
 ## DSL reference
 
