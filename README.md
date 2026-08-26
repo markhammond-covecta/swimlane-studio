@@ -59,7 +59,7 @@ The DSL is line-oriented. Click the
 | `Alice -> Alice: Validate` | Same-lane forward link. Box in Alice with a horizontal trail to the next Alice-source box. |
 | `Alice <-> Alice: Process` | Bidirectional same-lane: forward link plus a backward link from the previous Alice-source box. |
 | `Alice <-> Bob: Sync call` | Bidirectional cross-lane: the normal cross-lane arrow plus a same-lane backward link from the previous Alice box. |
-| `Alice <--> Alice: Process` | Bidirectional, dashed. Both links dash — the forward trail and the backward one. This is how you dash the arrow arriving AT a box: a dash on `-->` styles the arrow LEAVING its box, so an incoming link is dashed from the box it lands on. |
+| `Alice <--> Alice: Process` | Bidirectional with the arrow ARRIVING at this box drawn dashed, caption included; the outgoing trail stays solid. This is how you dash an incoming link: a dash on `-->` styles the arrow LEAVING its box, so an incoming one is dashed from the box it lands on. |
 | `Bob >-> Alice: Reply` | Counter-pair forward link. After `Alice -> Bob`, this opts INTO the shared-column side-by-side rendering (down-and-up arrows next to each other). Without `>->`, the reply breaks the chain and starts a new column. |
 | `Alice <: Done` | Backward-only box: incoming link from the previous Alice box, no outgoing trail. Useful for terminal states. |
 | `Alice <--: Done` | Backward-only box with its incoming link drawn dashed. |

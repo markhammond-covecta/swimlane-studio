@@ -64,10 +64,10 @@ Boxes live in their SENDER's lane; arrows route to the target lane.
   Alice --> Bob: ACK              Cross-lane message (dashed, e.g. a reply).
   Alice -> Alice: Validate        Same-lane step; trails to next Alice box.
   Alice <-> Bob: Sync             Bidirectional arrow.
-  Alice <--> Alice: Process       Bidirectional, dashed: BOTH the forward trail
-                                  and the backward link. Use it to dash an
-                                  arrow arriving AT a box (a dash on "->"
-                                  styles the arrow leaving its own box).
+  Alice <--> Alice: Process       Bidirectional with the arrow ARRIVING at this
+                                  box dashed, caption included; the outgoing
+                                  trail stays solid. Use it to dash an incoming
+                                  arrow (a dash on "->" styles the outgoing one).
   Bob >-> Alice: Reply            Counter-pair reply sharing a column.
   Alice <: Done                   Backward-only terminal box.
   Alice <--: Done                 Backward-only box, incoming link dashed.

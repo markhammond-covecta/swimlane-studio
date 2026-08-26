@@ -665,7 +665,7 @@
         <tr><td><code>A --&gt; B: msg</code></td><td>Forward message, drawn dashed (typically a response).</td></tr>
         <tr><td><code>A &lt;- B: msg</code></td><td>Reversed: B sends to A. Equivalent to <code>B -&gt; A: msg</code>.</td></tr>
         <tr><td><code>A &lt;-&gt; B: msg</code></td><td>Bidirectional same-lane link. Adds a forward trail to the next same-lane box and a backward trail from the previous same-lane box.</td></tr>
-        <tr><td><code>A &lt;--&gt; B: msg</code></td><td>Bidirectional, drawn dashed. Both links dash — the forward trail and the backward one. Use this to dash the arrow arriving AT a box: the dash on an ordinary <code>--&gt;</code> styles the arrow leaving its box, so the incoming link has to be dashed from the box it lands on.</td></tr>
+        <tr><td><code>A &lt;--&gt; B: msg</code></td><td>Bidirectional with the arrow ARRIVING at this box drawn dashed (its caption sits on that arrow too). Use it for a conditional step: a dash on an ordinary <code>--&gt;</code> styles the arrow leaving its box, so an incoming link is dashed from the box it lands on. The outgoing trail stays solid.</td></tr>
         <tr><td><code>B &gt;-&gt; A: msg</code></td><td>Force the shared-column counter-pair rendering when responding to the immediately previous message (otherwise the chain breaks and B's reply goes in a new column).</td></tr>
         <tr><td><code>A &lt;: text</code></td><td>Backward-only box: a labelled box in lane A with just an incoming trail from the previous same-lane box.</td></tr>
         <tr><td><code>A &lt;--: text</code></td><td>Backward-only box with its incoming trail drawn dashed.</td></tr>

@@ -87,7 +87,7 @@ await fs.rm(genDir, { recursive: true, force: true });
   // box and the incoming arrow is drawn (the same shape as a real diagram).
   const IN = `A -> C: first
 C --> A: cross
-C <--> C: dashed inbound`;
+C <--> C: dashed inbound <why>`;
   const m = parseCore(IN);
   solveLayoutCore(m);
   const ev = m.events.find((e) => e.text === "dashed inbound");
@@ -97,7 +97,21 @@ C <--> C: dashed inbound`;
   const svgText = svg.content.find((c) => c.type === "text" && /<svg/.test(c.text)).text;
   const paths = (svgText.match(/<path[^>]*\/>/g) || []).filter((p) => p.includes(`data-line="${ev.lineNo}"`));
   check(paths.length === 2, "dashed-in: both links drawn");
-  check(paths.every((p) => p.includes("stroke-dasharray")), "dashed-in: both links dashed");
+  // Only the INCOMING link dashes; the outgoing trail stays solid.
+  check(paths.filter((p) => p.includes("stroke-dasharray")).length === 1, "dashed-in: exactly one link dashed");
+  check(ev.dashed === false, "dashed-in: <--> leaves the outgoing trail solid");
+  // The caption rides the INCOMING arrow, not the outgoing one: its anchor
+  // must sit within the incoming arrow's span, well above the outgoing trail.
+  check(/why/.test(svgText), "dashed-in: caption rendered");
+  const inPts = ev.arrowPathIn;
+  const capM = svgText.match(/<text x="([\d.]+)" y="([\d.]+)"[^>]*font-style="italic"/);
+  check(!!capM, "dashed-in: caption is an italic label");
+  if (capM) {
+    const cx = parseFloat(capM[1]);
+    const lo = Math.min(inPts[0].x, inPts[inPts.length - 1].x) - 40;
+    const hi = Math.max(inPts[0].x, inPts[inPts.length - 1].x) + 40;
+    check(cx >= lo && cx <= hi, "dashed-in: caption sits on the incoming arrow");
+  }
 
   // Solid "<->" stays solid, and "<:" keeps its undashed default.
   const solid = parseCore(`A -> C: first\nC --> A: cross\nC <-> C: solid inbound`);
