@@ -64,8 +64,13 @@ Boxes live in their SENDER's lane; arrows route to the target lane.
   Alice --> Bob: ACK              Cross-lane message (dashed, e.g. a reply).
   Alice -> Alice: Validate        Same-lane step; trails to next Alice box.
   Alice <-> Bob: Sync             Bidirectional arrow.
+  Alice <--> Alice: Process       Bidirectional, dashed: BOTH the forward trail
+                                  and the backward link. Use it to dash an
+                                  arrow arriving AT a box (a dash on "->"
+                                  styles the arrow leaving its own box).
   Bob >-> Alice: Reply            Counter-pair reply sharing a column.
   Alice <: Done                   Backward-only terminal box.
+  Alice <--: Done                 Backward-only box, incoming link dashed.
   Alice: Read output              Standalone box (no arrow of its own).
   [1] Alice -> Bob: Start         Tag this box "1" (the tag is not drawn).
   Carol -> [1]: Retry             Loop back to the box tagged "1".
@@ -218,7 +223,15 @@ registerAppTool(
 
     const out = { svg };
     if (fmt === "png" || fmt === "all") out.png = svgToPng(svg, scale);
-    if (fmt === "ascii" || fmt === "all") out.ascii = renderAscii(parse(source));
+    // renderAscii reads solver output (column assignment), so the model must
+    // go through solveLayout first. ASCII is always laid out horizontally
+    // regardless of the SVG's orientation.
+    if (fmt === "ascii" || fmt === "all") {
+      const am = parse(source);
+      am.orientation = "horizontal";
+      solveLayout(am);
+      out.ascii = renderAscii(am);
+    }
 
     const content = [];
     const structured = {

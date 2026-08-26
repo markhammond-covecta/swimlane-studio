@@ -9,6 +9,13 @@ import os from "node:os";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+// The engine itself, for geometry assertions the rendered output can't
+// express as cheaply (e.g. whether an incoming arrow was built at all).
+import {
+  parse as parseCore,
+  solveLayout as solveLayoutCore,
+  layoutMetrics as layoutMetricsCore,
+} from "../lib/swimlane-core.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -71,6 +78,38 @@ const genSaved = await client.callTool({ name: "generate_swimlane_script", argum
 check((genSaved.structuredContent.written || [])[0] === scriptPath, "generate script: reports written path");
 check((await fs.readFile(scriptPath, "utf8")) === SOURCE, "generate script: file written verbatim");
 await fs.rm(genDir, { recursive: true, force: true });
+
+// 2c. dashed incoming links. A dash styles the arrow LEAVING a box, so
+// "<-->" is what dashes the arrow ARRIVING at one; "<--:" does the same for
+// a backward-only box. Asserted on the solved geometry plus the SVG.
+{
+  // C's previous box sends CROSS-lane, so it owns no forward link into this
+  // box and the incoming arrow is drawn (the same shape as a real diagram).
+  const IN = `A -> C: first
+C --> A: cross
+C <--> C: dashed inbound`;
+  const m = parseCore(IN);
+  solveLayoutCore(m);
+  const ev = m.events.find((e) => e.text === "dashed inbound");
+  check(ev.dashedIn === true, "dashed-in: <--> sets dashedIn");
+  check(!!ev.arrowPathIn, "dashed-in: incoming arrow is built");
+  const svg = await client.callTool({ name: "render_swimlane", arguments: { source: IN, format: "svg" } });
+  const svgText = svg.content.find((c) => c.type === "text" && /<svg/.test(c.text)).text;
+  const paths = (svgText.match(/<path[^>]*\/>/g) || []).filter((p) => p.includes(`data-line="${ev.lineNo}"`));
+  check(paths.length === 2, "dashed-in: both links drawn");
+  check(paths.every((p) => p.includes("stroke-dasharray")), "dashed-in: both links dashed");
+
+  // Solid "<->" stays solid, and "<:" keeps its undashed default.
+  const solid = parseCore(`A -> C: first\nC --> A: cross\nC <-> C: solid inbound`);
+  solveLayoutCore(solid);
+  check(solid.events.find((e) => e.text === "solid inbound").dashedIn === false, "dashed-in: <-> stays solid");
+  const back = parseCore(`A -> C: first\nC --> A: cross\nC <--: terminal`);
+  solveLayoutCore(back);
+  const bev = back.events.find((e) => e.text === "terminal");
+  check(bev.incomingOnly === true && bev.dashedIn === true, "dashed-in: <--: parses as dashed backward-only");
+  const back2 = parseCore(`A -> B: first\nB <: plain`);
+  check(back2.events.find((e) => e.text === "plain").dashedIn === false, "dashed-in: <: stays solid");
+}
 
 // 3. render svg
 const svg = await client.callTool({ name: "render_swimlane", arguments: { source: SOURCE, format: "svg" } });

@@ -665,8 +665,10 @@
         <tr><td><code>A --&gt; B: msg</code></td><td>Forward message, drawn dashed (typically a response).</td></tr>
         <tr><td><code>A &lt;- B: msg</code></td><td>Reversed: B sends to A. Equivalent to <code>B -&gt; A: msg</code>.</td></tr>
         <tr><td><code>A &lt;-&gt; B: msg</code></td><td>Bidirectional same-lane link. Adds a forward trail to the next same-lane box and a backward trail from the previous same-lane box.</td></tr>
+        <tr><td><code>A &lt;--&gt; B: msg</code></td><td>Bidirectional, drawn dashed. Both links dash — the forward trail and the backward one. Use this to dash the arrow arriving AT a box: the dash on an ordinary <code>--&gt;</code> styles the arrow leaving its box, so the incoming link has to be dashed from the box it lands on.</td></tr>
         <tr><td><code>B &gt;-&gt; A: msg</code></td><td>Force the shared-column counter-pair rendering when responding to the immediately previous message (otherwise the chain breaks and B's reply goes in a new column).</td></tr>
         <tr><td><code>A &lt;: text</code></td><td>Backward-only box: a labelled box in lane A with just an incoming trail from the previous same-lane box.</td></tr>
+        <tr><td><code>A &lt;--: text</code></td><td>Backward-only box with its incoming trail drawn dashed.</td></tr>
         <tr><td><code>A: text</code></td><td>Standalone box: a labelled box in lane A with no arrows of its own. A preceding cross-lane arrow will still land on it.</td></tr>
         <tr><td><code>A -&gt; A: text</code></td><td>Same-lane forward link. The box sits in lane A and a horizontal arrow trails to the next same-lane box.</td></tr>
         <tr><td><code>A -&gt; B: msg &lt;label&gt;</code></td><td>Text on the arrow itself. A trailing <code>&lt;...&gt;</code> becomes the arrow's italic side-label; the rest stays in the box. Works with any arrow type, e.g. <code>A -&gt; B: Send request &lt;http POST&gt;</code>.</td></tr>

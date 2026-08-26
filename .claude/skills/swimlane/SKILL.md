@@ -150,8 +150,10 @@ So: end every same-lane chain with a standalone (`Lane:`) or backward-only
 | `Alice --> Bob: ACK` | Same, dashed line (typically a response). |
 | `Alice -> Alice: Validate` | Same-lane step; box in Alice trailing to the next Alice box. |
 | `Alice <-> Bob: Sync call` | Bidirectional: cross-lane arrow plus a same-lane backward link. |
+| `Alice <--> Alice: Process` | Bidirectional, dashed — both the forward trail and the backward link. The way to dash an arrow ARRIVING at a box: a dash on `-->` styles the arrow leaving its box, so an incoming link is dashed from the box it lands on. |
 | `Bob >-> Alice: Reply` | Counter-pair reply that shares a column with the prior `Alice -> Bob`. |
 | `Alice <: Done` | Backward-only terminal box (incoming link, no outgoing trail). |
+| `Alice <--: Done` | Backward-only terminal box, incoming link dashed. |
 | `Alice: Read output` | Standalone box — no arrow of its own. |
 | `[1] Alice -> Bob: Start` | Tag this box `1` (free-form name; not drawn). |
 | `Carol -> [1]: Retry` | Loop back: backward arc to the box tagged `1`. |
