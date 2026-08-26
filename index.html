@@ -1967,6 +1967,30 @@ async function currentPngBlob(scale = 2) {
   return new Promise(resolve => canvas.toBlob(resolve, "image/png"));
 }
 
+// Default download/save name, derived from the diagram's "title:" line so
+// exports arrive as "order-processing.png" rather than "swimlane.png".
+// Falls back to "swimlane" when there's no usable title.
+function defaultFileName(ext) {
+  const lines = editor.value.split("\n");
+  let title = "";
+  // Last title wins, matching the parser.
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = lines[i].match(/^\s*title\s*:\s*(.*)$/i);
+    if (m) { title = m[1]; break; }
+  }
+  const slug = title
+    .trim()
+    .toLowerCase()
+    // Decompose accents so "Café" slugs to "cafe", not "caf".
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    .replace(/-+$/, "");
+  return (slug || "swimlane") + "." + ext;
+}
+
 function triggerDownload(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -1981,13 +2005,13 @@ function triggerDownload(blob, filename) {
 document.getElementById("download-svg").addEventListener("click", () => {
   const xml = currentSvgXml();
   if (!xml) return;
-  triggerDownload(new Blob([xml], { type: "image/svg+xml" }), "swimlane.svg");
+  triggerDownload(new Blob([xml], { type: "image/svg+xml" }), defaultFileName("svg"));
 });
 
 document.getElementById("download-png").addEventListener("click", async () => {
   try {
     const blob = await currentPngBlob();
-    if (blob) triggerDownload(blob, "swimlane.png");
+    if (blob) triggerDownload(blob, defaultFileName("png"));
   } catch (e) {
     flashStatus("PNG export failed");
   }
@@ -2073,7 +2097,7 @@ async function currentPdfBlob(scale = 2) {
 document.getElementById("download-pdf").addEventListener("click", async () => {
   try {
     const blob = await currentPdfBlob();
-    if (blob) triggerDownload(blob, "swimlane.pdf");
+    if (blob) triggerDownload(blob, defaultFileName("pdf"));
   } catch (e) {
     flashStatus("PDF export failed");
   }
@@ -2415,7 +2439,7 @@ async function saveSource(forceNew) {
       if (handle && !(await ensureWritable(handle))) handle = null;
       if (!handle) {
         handle = await window.showSaveFilePicker({
-          suggestedName: (fileHandle && fileHandle.name) || "swimlane.txt",
+          suggestedName: (fileHandle && fileHandle.name) || defaultFileName("txt"),
           types: [{ description: "Text file", accept: { "text/plain": [".txt"] } }],
         });
       }
@@ -2431,8 +2455,9 @@ async function saveSource(forceNew) {
     }
     return;
   }
-  triggerDownload(new Blob([text], { type: "text/plain" }), "swimlane.txt");
-  setFileName("swimlane.txt");
+  const name = defaultFileName("txt");
+  triggerDownload(new Blob([text], { type: "text/plain" }), name);
+  setFileName(name);
   markSaved();
   flashStatus("Saved");
 }
