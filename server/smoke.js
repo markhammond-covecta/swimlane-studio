@@ -113,6 +113,20 @@ C <--> C: dashed inbound <why>`;
     check(cx >= lo && cx <= hi, "dashed-in: caption sits on the incoming arrow");
   }
 
+  // The gap before the box must GROW to fit the caption, or the label is
+  // clipped by the box it points at. Compare against a caption-free control.
+  {
+    const long_ = parseCore(`A -> C: first\nC --> A: cross\nC <--> C: box <a rather long caption>`);
+    solveLayoutCore(long_);
+    const none = parseCore(`A -> C: first\nC --> A: cross\nC <--> C: box`);
+    solveLayoutCore(none);
+    const span = (mm) => {
+      const e = mm.events.find((x) => x.text === "box");
+      return Math.abs(e.arrowPathIn[1].x - e.arrowPathIn[0].x);
+    };
+    check(span(long_) > span(none), "dashed-in: incoming arrow grows for a long caption");
+  }
+
   // Solid "<->" stays solid, and "<:" keeps its undashed default.
   const solid = parseCore(`A -> C: first\nC --> A: cross\nC <-> C: solid inbound`);
   solveLayoutCore(solid);
