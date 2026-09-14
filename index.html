@@ -1293,25 +1293,38 @@ function showLaneDropLine(bands, slot, vertical) {
     laneDropLine.className = "lane-drop-line";
     document.body.appendChild(laneDropLine);
   }
-  const first = bands[0].rect;
-  const last = bands[bands.length - 1].rect;
   const THICK = 3;
+  // Centre the indicator in the GAP between the two bands it separates, so
+  // it reads as "between these lanes" rather than sitting on one band's
+  // edge. Past either end there is no gap, so it hugs the outer edge.
+  const near = vertical
+    ? (b => b.rect.left)
+    : (b => b.rect.top);
+  const far = vertical
+    ? (b => b.rect.right)
+    : (b => b.rect.bottom);
+  let pos;
+  if (slot <= 0) {
+    pos = near(bands[0]);
+  } else if (slot >= bands.length) {
+    pos = far(bands[bands.length - 1]);
+  } else {
+    pos = (far(bands[slot - 1]) + near(bands[slot])) / 2;
+  }
   if (vertical) {
     // Bands run left-to-right: the indicator is a vertical line.
-    const x = slot >= bands.length ? last.right : bands[slot].rect.left;
     const top = Math.min(...bands.map(b => b.rect.top));
     const bot = Math.max(...bands.map(b => b.rect.bottom));
-    laneDropLine.style.left = Math.round(x - THICK / 2) + "px";
+    laneDropLine.style.left = Math.round(pos - THICK / 2) + "px";
     laneDropLine.style.top = Math.round(top) + "px";
     laneDropLine.style.width = THICK + "px";
     laneDropLine.style.height = Math.round(bot - top) + "px";
   } else {
     // Bands run top-to-bottom: the indicator is a horizontal line.
-    const y = slot >= bands.length ? last.bottom : bands[slot].rect.top;
     const left = Math.min(...bands.map(b => b.rect.left));
     const right = Math.max(...bands.map(b => b.rect.right));
     laneDropLine.style.left = Math.round(left) + "px";
-    laneDropLine.style.top = Math.round(y - THICK / 2) + "px";
+    laneDropLine.style.top = Math.round(pos - THICK / 2) + "px";
     laneDropLine.style.width = Math.round(right - left) + "px";
     laneDropLine.style.height = THICK + "px";
   }
