@@ -1669,7 +1669,13 @@ function acUpdate() {
   acItems = matches;
   acIndex = 0;
   acPrefixLen = seg.prefix.length;
-  acRange = { start: lineStart + seg.wordStart, end: lineStart + seg.wordEnd };
+  // `end` is the caret: accepting replaces only the typed prefix. Text after
+  // the caret in the same segment is kept unless it is what the completion
+  // would type anyway (the caret sits inside the lane name, "Al|ice"), in
+  // which case acAccept consumes it rather than doubling it up. Replacing
+  // the whole segment unconditionally deleted whatever followed the caret,
+  // e.g. typing "Cus" at the start of "API -> DB: Save" and pressing Tab.
+  acRange = { start: lineStart + seg.wordStart, end: caret, segEnd: lineStart + seg.wordEnd };
   acRender();
   acPosition(caret);
 }
@@ -1678,8 +1684,11 @@ function acAccept(i) {
   const name = acItems[i != null ? i : acIndex];
   if (!name || !acRange) return acHide();
   const v = editor.value;
+  let end = acRange.end;
+  const typed = v.slice(acRange.start, acRange.segEnd);
+  if (name.toLowerCase().startsWith(typed.toLowerCase())) end = acRange.segEnd;
   const caret = acRange.start + name.length;
-  editor.value = v.slice(0, acRange.start) + name + v.slice(acRange.end);
+  editor.value = v.slice(0, acRange.start) + name + v.slice(end);
   editor.setSelectionRange(caret, caret);
   acHide();
   editor.dispatchEvent(new Event("input"));
