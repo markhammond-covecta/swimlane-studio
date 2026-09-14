@@ -394,6 +394,23 @@
 
   /* Lane captions are double-clickable to rename the lane everywhere. */
   #diagram svg text[data-lane] { cursor: text; }
+
+  /* Lane bands are draggable to reorder the lanes. */
+  #diagram svg rect[data-lane-band] { cursor: grab; }
+  #diagram.lane-dragging svg rect[data-lane-band] { cursor: grabbing; }
+  /* The band being dragged fades; a line marks where it would land. */
+  #diagram svg rect[data-lane-band].lane-drag-source {
+    fill: #eef2ff;
+    stroke: #6366f1;
+    stroke-dasharray: 5 4;
+  }
+  .lane-drop-line {
+    position: fixed;
+    z-index: 45;
+    background: #6366f1;
+    border-radius: 2px;
+    pointer-events: none;
+  }
   .lane-edit {
     position: fixed;
     z-index: 50;
@@ -991,7 +1008,7 @@
 <script type="module">
 // Diagram engine lives in lib/swimlane-core.js so the MCP server can
 // share the exact same parse -> solve -> render pipeline. See README.
-import { parse, solveLayout, render, renameLane, escXml, wrap } from "./lib/swimlane-core.js";
+import { parse, solveLayout, render, renameLane, reorderLanes, escXml, wrap } from "./lib/swimlane-core.js";
 
 
 // ---------- driver ----------
@@ -1241,6 +1258,160 @@ diagram.addEventListener("dblclick", e => {
   const oldName = currentLanes[idx];
   if (typeof oldName !== "string") return;
   startLaneEdit(el, oldName);
+});
+
+// ---------- drag a lane band to reorder the lanes ----------
+// Pointer-drag any lane band (the rounded frame behind a lane) to move that
+// lane. A line shows where it would land; dropping rewrites the source's
+// "order:" directive, which is what fixes lane order for the next render.
+// The bands are laid out along the cross-axis of the diagram's orientation,
+// so we read each band's on-screen box and work out the axis from it rather
+// than assuming one.
+let laneDrag = null;
+let laneDropLine = null;
+
+function laneBandRects() {
+  // Every lane band, in lane-index order, with its viewport rectangle.
+  const out = [];
+  diagram.querySelectorAll("svg rect[data-lane-band]").forEach(el => {
+    const i = parseInt(el.getAttribute("data-lane-band"), 10);
+    if (!Number.isFinite(i)) return;
+    out.push({ index: i, el, rect: el.getBoundingClientRect() });
+  });
+  out.sort((a, b) => a.index - b.index);
+  return out;
+}
+
+function clearLaneDropLine() {
+  if (laneDropLine) { laneDropLine.remove(); laneDropLine = null; }
+}
+
+// Draw the drop indicator at slot `slot` (0..n), i.e. before band `slot`.
+function showLaneDropLine(bands, slot, vertical) {
+  if (!laneDropLine) {
+    laneDropLine = document.createElement("div");
+    laneDropLine.className = "lane-drop-line";
+    document.body.appendChild(laneDropLine);
+  }
+  const first = bands[0].rect;
+  const last = bands[bands.length - 1].rect;
+  const THICK = 3;
+  if (vertical) {
+    // Bands run left-to-right: the indicator is a vertical line.
+    const x = slot >= bands.length ? last.right : bands[slot].rect.left;
+    const top = Math.min(...bands.map(b => b.rect.top));
+    const bot = Math.max(...bands.map(b => b.rect.bottom));
+    laneDropLine.style.left = Math.round(x - THICK / 2) + "px";
+    laneDropLine.style.top = Math.round(top) + "px";
+    laneDropLine.style.width = THICK + "px";
+    laneDropLine.style.height = Math.round(bot - top) + "px";
+  } else {
+    // Bands run top-to-bottom: the indicator is a horizontal line.
+    const y = slot >= bands.length ? last.bottom : bands[slot].rect.top;
+    const left = Math.min(...bands.map(b => b.rect.left));
+    const right = Math.max(...bands.map(b => b.rect.right));
+    laneDropLine.style.left = Math.round(left) + "px";
+    laneDropLine.style.top = Math.round(y - THICK / 2) + "px";
+    laneDropLine.style.width = Math.round(right - left) + "px";
+    laneDropLine.style.height = THICK + "px";
+  }
+}
+
+// The slot the pointer currently sits at: the number of bands whose midpoint
+// it has passed along the stacking axis.
+function laneDropSlot(bands, vertical, clientX, clientY) {
+  const pos = vertical ? clientX : clientY;
+  let slot = 0;
+  for (const b of bands) {
+    const mid = vertical
+      ? (b.rect.left + b.rect.right) / 2
+      : (b.rect.top + b.rect.bottom) / 2;
+    if (pos > mid) slot++;
+  }
+  return slot;
+}
+
+function endLaneDrag(commit) {
+  if (!laneDrag) return;
+  const drag = laneDrag;
+  laneDrag = null;
+  clearLaneDropLine();
+  diagram.classList.remove("lane-dragging");
+  drag.el.classList.remove("lane-drag-source");
+  window.removeEventListener("pointermove", onLaneDragMove);
+  window.removeEventListener("pointerup", onLaneDragUp);
+  window.removeEventListener("pointercancel", onLaneDragCancel);
+  try { drag.el.releasePointerCapture(drag.pointerId); } catch {}
+  if (!commit || !drag.moved || drag.slot === null) return;
+
+  // Splice the lane into its new slot. The slot counts positions in the
+  // ORIGINAL list, so removing the lane first shifts every later slot down.
+  const order = currentLanes.slice();
+  const from = drag.index;
+  let to = drag.slot;
+  if (to > from) to--;
+  if (to === from) return;
+  const [moved] = order.splice(from, 1);
+  order.splice(to, 0, moved);
+  commitSourceChange(reorderLanes(editor.value, order));
+}
+
+function onLaneDragMove(e) {
+  if (!laneDrag) return;
+  if (!laneDrag.moved) {
+    const dx = e.clientX - laneDrag.startX;
+    const dy = e.clientY - laneDrag.startY;
+    // A small threshold keeps a click (or a double-click on the caption)
+    // from being read as a drag.
+    if (Math.abs(dx) + Math.abs(dy) < 4) return;
+    laneDrag.moved = true;
+    diagram.classList.add("lane-dragging");
+    laneDrag.el.classList.add("lane-drag-source");
+  }
+  const { bands, vertical } = laneDrag;
+  laneDrag.slot = laneDropSlot(bands, vertical, e.clientX, e.clientY);
+  showLaneDropLine(bands, laneDrag.slot, vertical);
+}
+
+function onLaneDragUp() { endLaneDrag(true); }
+function onLaneDragCancel() { endLaneDrag(false); }
+
+diagram.addEventListener("pointerdown", e => {
+  if (e.button !== 0) return;
+  // Boxes, arrows and captions are drawn OVER the lane bands, so the topmost
+  // element under the pointer is often one of those rather than the band —
+  // and they are siblings of the band, not descendants, so closest() would
+  // miss it. Anything with its own interaction (a box, an arrow, a caption)
+  // wins; otherwise we find the band by geometry.
+  const t = e.target;
+  if (t && t.closest && (t.closest("[data-line]") || t.closest("[data-lane]"))) return;
+  const bands = laneBandRects();
+  if (bands.length < 2) return;
+  const hit = bands.find(b =>
+    e.clientX >= b.rect.left && e.clientX <= b.rect.right &&
+    e.clientY >= b.rect.top && e.clientY <= b.rect.bottom
+  );
+  if (!hit) return;
+  const index = hit.index;
+  const el = hit.el;
+  // Bands stack along whichever axis their centres actually vary on, so this
+  // holds for both orientations without consulting the orientation flag.
+  const first = bands[0].rect, last = bands[bands.length - 1].rect;
+  const vertical = Math.abs(last.left - first.left) > Math.abs(last.top - first.top);
+  e.preventDefault();
+  laneDrag = {
+    index, el, bands, vertical, moved: false, slot: null,
+    startX: e.clientX, startY: e.clientY, pointerId: e.pointerId,
+  };
+  try { el.setPointerCapture(e.pointerId); } catch {}
+  window.addEventListener("pointermove", onLaneDragMove);
+  window.addEventListener("pointerup", onLaneDragUp);
+  window.addEventListener("pointercancel", onLaneDragCancel);
+});
+
+// Escape abandons an in-flight drag.
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && laneDrag) { e.preventDefault(); endLaneDrag(false); }
 });
 
 // ---------- double-click a box to edit its caption ----------
